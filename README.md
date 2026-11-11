@@ -9,7 +9,7 @@ If you share, copy or build on these, please credit **ClevererOnlineLearning** a
 |---|---|---|
 | TargetFinder | One key finds a mob by name, optionally casts a spell, marks it; map dots for spawns; Tag mode | `/tfinder` |
 | UIFade | Fades the parts of the interface you tick (bars, unit frames, chat, minimap…), 20–100%, minimap button | `/uifade` |
-| ThreatTint | Colours nameplates by threat | `/tint` |
+| ThreatTint | Colours nameplates by threat (pet = blue, shading shows how close you are to pulling; settings + colour legend) | `/tint` |
 | PetWarn | "Pet not attacking" warning in fights | `/petwarn` |
 | GunSilencer | Replaces gun sounds | `/gunsilencer` |
 | SLoTe | Scrolling loot text, Forever port (see credits) | `/slote` |
