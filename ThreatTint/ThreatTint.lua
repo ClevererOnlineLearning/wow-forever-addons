@@ -59,7 +59,19 @@ function TT.Check()
 	for i = 1, 40 do local u = "nameplate" .. i; local okU, same = pcall(UnitIsUnit, u, "target"); if okU and Plain(same) == true then unit = u break end end
 	if unit then
 		local role = TT.IsTank() and "tank" or "dps"
-		Print("ThreatTint sees it as: |cffffffff" .. tostring(TT.State(unit) or "not fighting") .. "|r (" .. role .. ").")
+		local state = TT.State(unit)
+		Print("ThreatTint sees it as: |cffffffff" .. tostring(state or "not fighting") .. "|r (" .. role .. ").")
+		local db = ThreatTintDB
+		local why
+		if not db.enabled then why = "ThreatTint is off"
+		elseif not db.number then why = "the % is switched off in /tint"
+		elseif state == "you" or state == "losing" then why = "the mob is on you (the bar colour says that)"
+		elseif not (state == "other" or state == "gaining" or state == "pet") then why = "the mob isn't on your threat list"
+		elseif not TT.Percent(unit) then why = "the game gave no %" end
+		local t = TT.NumberFor(unit)
+		if why then Print("Number on the nameplate: hidden, because " .. why .. ".")
+		elseif t and t:IsShown() then Print("Number on the nameplate: showing |cffffffff" .. tostring(t:GetText()) .. "|r. Can't see it? Tell me.")
+		else Print("Number on the nameplate: should be showing but isn't. Tell me.") end
 	end
 end
 
@@ -190,15 +202,29 @@ end
 local numbers = setmetatable({}, { __mode = "k" })
 function TT.SetNumber(bar, pct, c)
 	local t = numbers[bar]
-	if not pct then if t then t:Hide() end return end
+	if not pct then if t then t:Hide(); t.holder:Hide() end return end
 	if not t then
-		t = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		t:SetPoint("LEFT", bar, "RIGHT", 3, 0)
+		-- Our own small frame on the nameplate itself (not inside the health bar, whose container
+		-- can cut off anything drawn past its edge), placed over the bar and drawn above it.
+		local plate = bar
+		while plate:GetParent() and plate:GetParent() ~= UIParent and plate:GetParent() ~= WorldFrame do plate = plate:GetParent() end
+		local holder = CreateFrame("Frame", nil, plate)
+		holder:SetAllPoints(bar)
+		holder:SetFrameLevel((bar:GetFrameLevel() or 1) + 10)
+		t = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		t:SetPoint("LEFT", holder, "RIGHT", 3, 0)
+		t.holder = holder
 		numbers[bar] = t
 	end
 	t:SetText(("%d%%"):format(math.floor(pct + 0.5)))
 	t:SetTextColor(c[1], c[2], c[3])
-	t:Show()
+	t.holder:Show(); t:Show()
+end
+
+function TT.NumberFor(unit)
+	local plate = C_NamePlate.GetNamePlateForUnit(unit)
+	local bar = plate and plate.UnitFrame and plate.UnitFrame.healthBar
+	return bar and numbers[bar]
 end
 
 local function Restore(bar)
