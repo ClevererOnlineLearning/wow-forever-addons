@@ -8,7 +8,7 @@ If you share, copy or build on these, please credit **ClevererOnlineLearning** a
 | Add-on | What it does | Command |
 |---|---|---|
 | TargetFinder | One key finds a mob by name, optionally casts a spell, marks it; map dots for spawns; Tag mode | `/tfinder` |
-| UIFade | Fades the whole interface (20–100%), with a minimap slider | `/uifade` |
+| UIFade | Fades the parts of the interface you tick (bars, unit frames, chat, minimap…), 20–100%, minimap button | `/uifade` |
 | ThreatTint | Colours nameplates by threat | `/tint` |
 | PetWarn | "Pet not attacking" warning in fights | `/petwarn` |
 | GunSilencer | Replaces gun sounds | `/gunsilencer` |

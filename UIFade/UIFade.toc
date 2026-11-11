@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: UI Fade
 ## Notes: Makes your whole interface see-through so it's easier on the eyes. /uifade
-## Version: 1.2
+## Version: 2.0
 ## Author: ClevererOnlineLearning
 ## X-Website: https://github.com/ClevererOnlineLearning/wow-forever-addons
 ## X-License: MIT (keep the credit when sharing)
