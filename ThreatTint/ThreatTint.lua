@@ -40,6 +40,29 @@ function TT.Color(role, state)
 	return TT.COLORS[role][state]
 end
 
+-- /tint check: what the game tells add-ons about your threat on your target. Only reports;
+-- a hidden (secret) value is reported as hidden, never read.
+function TT.Check()
+	local function Show(label, v)
+		if v == nil then return label .. " nothing" end
+		if IsSecret(v) then return label .. " |cffff6633hidden from add-ons|r" end
+		return label .. " |cffffffff" .. tostring(v) .. "|r"
+	end
+	if not UnitDetailedThreatSituation then Print("This game has no threat % for add-ons at all."); return end
+	if Plain(UnitExists("target")) ~= true then Print("Target a mob you're fighting first, then type /tint check."); return end
+	local ok, tanking, status, scaled, raw = pcall(UnitDetailedThreatSituation, "player", "target")
+	if not ok then Print("The game gave an error when asked for your threat."); return end
+	Print("Your threat on your target: " .. Show("status", status) .. ", " .. Show("% to pull", scaled) .. ", " .. Show("raw %", raw) .. ".")
+	local plate = C_NamePlate and C_NamePlate.GetNamePlateForUnit and C_NamePlate.GetNamePlateForUnit("target")
+	Print(plate and "Your target has a nameplate." or "Your target has no nameplate showing (the number goes on the nameplate).")
+	local unit
+	for i = 1, 40 do local u = "nameplate" .. i; local okU, same = pcall(UnitIsUnit, u, "target"); if okU and Plain(same) == true then unit = u break end end
+	if unit then
+		local role = TT.IsTank() and "tank" or "dps"
+		Print("ThreatTint sees it as: |cffffffff" .. tostring(TT.State(unit) or "not fighting") .. "|r (" .. role .. ").")
+	end
+end
+
 -- Threat steps: while a mob is on someone else, three clear colour bands show how close you
 -- are to pulling it (DPS) or taking it back (tank). pct = % of the threat needed, 0-100.
 function TT.Band(role, pct)
@@ -194,10 +217,17 @@ function TT.Update(unit)
 	local db = ThreatTintDB
 	local role = TT.IsTank() and "tank" or "dps"
 	local state = db and db.enabled and TT.State(unit)
-	local pct = (state == "other" or state == "gaining") and TT.Percent(unit) or nil
-	if pct and db.shade then state = TT.Band(role, pct) end
+	-- The % matters whenever the mob is on someone else, including your pet (are you about to
+	-- pull it off your pet?). The bar stays blue for your pet; the number shows the step colour.
+	local pct = (state == "other" or state == "gaining" or state == "pet") and TT.Percent(unit) or nil
+	local numColor
+	if pct and db.shade then
+		local band = TT.Band(role, pct)
+		numColor = TT.Color(role, band)
+		if state ~= "pet" then state = band end
+	end
 	local c = state and TT.COLORS[role][state] and TT.Color(role, state)
-	TT.SetNumber(bar, c and db.number and pct, c)
+	TT.SetNumber(bar, c and db.number and pct, numColor or c)
 	if c then
 		if not painted[bar] then
 			if not original[bar] then
@@ -469,6 +499,7 @@ SlashCmdList.THREATTINT = function(msg)
 	msg = (msg or ""):lower():match("^%s*(.-)%s*$")
 	local db = ThreatTintDB
 	if msg == "" then win:SetShown(not win:IsShown()); return end
+	if msg == "check" then TT.Check(); return end
 	if msg == "tank" then db.role = "tank"
 	elseif msg == "dps" or msg == "healer" or msg == "heal" then db.role = "dps"
 	elseif msg == "auto" then db.role = "auto"; autoTank = TT.AutoTank()
