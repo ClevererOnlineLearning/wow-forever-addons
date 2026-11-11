@@ -17,7 +17,7 @@ Private add-ons for the WoW Forever client (Interface 16001).
 3. Restart the game fully (new add-ons don't show up with `/reload`).
 
 ## Credits
-- **SLoTe (Scrolling Loot Text)** is not our add-on. The original was written by its original author
+- **SLoTe (Scrolling Loot Text)** is not our add-on. The original was written by its author and published on CurseForge
   (Scrolling Loot Text); all credit for it goes to them. This copy is only a port for the WoW Forever
   client (Interface 16001) with fixes, a new floating-text engine, a settings window and a minimap button.
   It is shared privately with the original author credited; it will be removed if they ask.
