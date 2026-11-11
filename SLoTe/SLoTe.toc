@@ -2,6 +2,7 @@
 ## Title: Scrolling Loot Text
 ## Notes: Shows looted items, money, currency and honor as floating text that pops up mid-screen and drifts away, with item icon and rarity colour. (Patched for WoW Forever)
 ## Version: 1.1-forever
+## X-Credits: Original Scrolling Loot Text by its CurseForge author. Forever port by ClevererOnlineLearning (https://github.com/ClevererOnlineLearning/wow-forever-addons)
 ## SavedVariablesPerCharacter: Activation, ShowL, ShowC, ShowH, ShowM, Scale, DisplayIcons, FloatMode, FadeMode, SLoTeOptions
 embeds.xml
 SLoTe.lua

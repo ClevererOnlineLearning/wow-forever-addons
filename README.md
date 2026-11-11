@@ -1,6 +1,9 @@
 # WoW Forever add-ons
 
-Private add-ons for the WoW Forever client (Interface 16001).
+Add-ons for the WoW Forever client (Interface 16001), made by **ClevererOnlineLearning**.
+
+If you share, copy or build on these, please credit **ClevererOnlineLearning** and link back here. The MIT licence
+(see `LICENSE`) requires keeping the credit notice in any copy.
 
 | Add-on | What it does | Command |
 |---|---|---|
@@ -21,5 +24,6 @@ Private add-ons for the WoW Forever client (Interface 16001).
   (Scrolling Loot Text); all credit for it goes to them. This copy is only a port for the WoW Forever
   client (Interface 16001) with fixes, a new floating-text engine, a settings window and a minimap button.
   It is shared privately with the original author credited; it will be removed if they ask.
+- **GunSilencer's sound files** come from the Gun Silencer M4A1 sound mod and belong to its author.
 - SLoTe bundles the Ace3 libraries and LibSharedMedia/LibDataBroker/LibDeformat, which belong to their authors.
 - TargetFinder bundles HereBeDragons (by Nevcairiel), LibStub and CallbackHandler.

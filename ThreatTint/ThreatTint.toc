@@ -2,6 +2,9 @@
 ## Title: ThreatTint
 ## Notes: Colours enemy nameplates by threat: who is the mob attacking? Detects if you are tanking. /tint
 ## Version: 1.4
+## Author: ClevererOnlineLearning
+## X-Website: https://github.com/ClevererOnlineLearning/wow-forever-addons
+## X-License: MIT (keep the credit when sharing)
 ## SavedVariablesPerCharacter: ThreatTintDB
 ## IconTexture: Interface\Icons\Ability_Warrior_DefensiveStance
 ThreatTint.lua
