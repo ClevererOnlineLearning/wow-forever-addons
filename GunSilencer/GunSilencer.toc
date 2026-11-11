@@ -2,8 +2,7 @@
 ## Title: Gun Silencer
 ## Notes: Mutes the default gun sounds and plays silenced shots when you fire a gun. Left-click the minimap button or /gsil for settings.
 ## Version: 1.1
-## Author: ClevererOnlineLearning
-## X-Website: https://github.com/ClevererOnlineLearning/wow-forever-addons
+## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## SavedVariables: GunSilencerDB
 GunSilencer.lua

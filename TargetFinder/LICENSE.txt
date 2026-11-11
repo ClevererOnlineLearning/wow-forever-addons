@@ -1,9 +1,9 @@
 MIT License
 
-Copyright (c) 2026 ClevererOnlineLearning (https://github.com/ClevererOnlineLearning/wow-forever-addons)
+Copyright (c) 2026 good mens (Mephz on WoW Forever)
 
-This licence covers the add-ons written by ClevererOnlineLearning: TargetFinder, UIFade, ThreatTint,
-PetWarn and the GunSilencer code. It does NOT cover SLoTe (Scrolling Loot Text, by its original
+This licence covers the add-ons written by good mens: TargetFinder, UIFade, ThreatTint,
+PetWarn, Hunter Reminder and the GunSilencer code. It does NOT cover SLoTe (Scrolling Loot Text, by its original
 CurseForge author; only the Forever port changes are ours), the GunSilencer sound files (from the
 Gun Silencer M4A1 sound mod, which belong to their author), or bundled libraries (Ace3, LibStub,
 CallbackHandler, HereBeDragons, LibSharedMedia, LibDataBroker, LibDeformat), which keep their own licences.

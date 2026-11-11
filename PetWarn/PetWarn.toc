@@ -2,8 +2,7 @@
 ## Title: PetWarn
 ## Notes: Shows "Pet not attacking" in the middle of your screen when you're in a fight and your pet is idle. /petwarn
 ## Version: 1.0
-## Author: ClevererOnlineLearning
-## X-Website: https://github.com/ClevererOnlineLearning/wow-forever-addons
+## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## SavedVariablesPerCharacter: PetWarnDB
 ## IconTexture: Interface\Icons\Ability_GhoulFrenzy

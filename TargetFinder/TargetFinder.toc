@@ -2,8 +2,7 @@
 ## Title: Target Finder
 ## Notes: Press one key to find a mob near you. Type a name, pick a key, done. /tfinder
 ## Version: 3.6
-## Author: ClevererOnlineLearning
-## X-Website: https://github.com/ClevererOnlineLearning/wow-forever-addons
+## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## OptionalDeps: Questie, QuestieDB
 ## SavedVariablesPerCharacter: TargetFinderDB

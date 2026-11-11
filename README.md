@@ -1,8 +1,8 @@
 # WoW Forever add-ons
 
-Add-ons for the WoW Forever client (Interface 16001), made by **ClevererOnlineLearning**.
+Add-ons for the WoW Forever client (Interface 16001), made by **good mens** (Mephz on WoW Forever).
 
-If you share, copy or build on these, please credit **ClevererOnlineLearning** and link back here. The MIT licence
+If you share, copy or build on these, please credit **good mens**. The MIT licence
 (see `LICENSE`) requires keeping the credit notice in any copy.
 
 | Add-on | What it does | Command |
