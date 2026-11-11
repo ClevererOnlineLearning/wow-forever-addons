@@ -1,0 +1,7 @@
+## Interface: 16001
+## Title: UI Fade
+## Notes: Makes your whole interface see-through so it's easier on the eyes. /uifade
+## Version: 1.2
+## SavedVariables: UIFadeDB
+## IconTexture: Interface\Icons\Spell_Holy_MindVision
+UIFade.lua

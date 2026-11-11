@@ -1,0 +1,7 @@
+## Interface: 16001
+## Title: Gun Silencer
+## Notes: Mutes the default gun sounds and plays silenced shots when you fire a gun. Left-click the minimap button or /gsil for settings.
+## Version: 1.1
+## SavedVariables: GunSilencerDB
+GunSilencer.lua
+Options.lua

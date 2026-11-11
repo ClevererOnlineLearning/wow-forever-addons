@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: Target Finder
+## Notes: Press one key to find a mob near you. Type a name, pick a key, done. /tfinder
+## Version: 3.5
+## OptionalDeps: Questie, QuestieDB
+## SavedVariablesPerCharacter: TargetFinderDB
+## IconTexture: Interface\Icons\INV_Misc_Spyglass_03
+Libs\LibStub.lua
+Libs\CallbackHandler-1.0.lua
+Libs\HereBeDragons-2.0.lua
+Libs\HereBeDragons-Pins-2.0.lua
+Core.lua
+Map.lua
+UI.lua

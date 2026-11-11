@@ -1,0 +1,7 @@
+## Interface: 16001
+## Title: PetWarn
+## Notes: Shows "Pet not attacking" in the middle of your screen when you're in a fight and your pet is idle. /petwarn
+## Version: 1.0
+## SavedVariablesPerCharacter: PetWarnDB
+## IconTexture: Interface\Icons\Ability_GhoulFrenzy
+PetWarn.lua

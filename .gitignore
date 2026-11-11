@@ -1,0 +1,11 @@
+# Only these add-ons are shared; every other folder here is ignored.
+/*
+!/.gitignore
+!/README.md
+!/TargetFinder/
+!/UIFade/
+!/ThreatTint/
+!/PetWarn/
+!/GunSilencer/
+!/SLoTe/
+/GunSilencer/sounds_original/

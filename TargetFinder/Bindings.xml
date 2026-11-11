@@ -1,0 +1,4 @@
+<Bindings>
+	<Binding name="CLICK TargetFinderSecureButton:LeftButton" category="Target Finder"></Binding>
+	<Binding name="TARGETFINDER_OPEN_SEARCH" runOnUp="true" category="Target Finder">TargetFinder_OpenSearch(keystate)</Binding>
+</Bindings>

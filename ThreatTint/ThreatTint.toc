@@ -1,0 +1,7 @@
+## Interface: 16001
+## Title: ThreatTint
+## Notes: Colours enemy nameplates by threat: who is the mob attacking? Detects if you are tanking. /tint
+## Version: 1.4
+## SavedVariablesPerCharacter: ThreatTintDB
+## IconTexture: Interface\Icons\Ability_Warrior_DefensiveStance
+ThreatTint.lua

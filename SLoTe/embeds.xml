@@ -1,0 +1,6 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+	<!-- SLoTe only uses LibStub + LibDeformat; the old bundled Ace libraries were never used. -->
+	<Script file="libs\LibStub\LibStub.lua" />
+	<Include file="libs\LibDeformat-3.0\lib.xml"/>
+</Ui>
