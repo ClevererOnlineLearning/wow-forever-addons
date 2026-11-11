@@ -19,16 +19,18 @@ local function Print(msg) DEFAULT_CHAT_FRAME:AddMessage("|cffff6633ThreatTint:|r
 local GREEN, YELLOW, ORANGE, RED = { 0.15, 0.80, 0.15 }, { 1.00, 0.85, 0.00 }, { 1.00, 0.55, 0.00 }, { 0.95, 0.10, 0.10 }
 local BLUE = { 0.25, 0.55, 1.00 } -- your pet has it
 TT.COLORS = {
-	tank = { you = GREEN, losing = ORANGE, gaining = YELLOW, pet = BLUE, other = RED, loose = RED },
-	dps  = { you = RED, losing = RED, gaining = YELLOW, pet = BLUE, other = GREEN },
+	tank = { you = GREEN, losing = ORANGE, gaining = YELLOW, close = ORANGE, pet = BLUE, other = RED, loose = RED },
+	dps  = { you = RED, losing = RED, gaining = YELLOW, close = ORANGE, pet = BLUE, other = GREEN },
 }
 -- What each colour means, in the order the settings window lists them.
 TT.LEGEND = {
 	tank = { { "you", "On you" }, { "losing", "On you, but someone is about to take it" },
-		{ "gaining", "On someone else, you're about to take it back" }, { "pet", "On your pet" },
-		{ "other", "On someone else: go get it" }, { "loose", "Fighting your group, not on your threat list yet" } },
+		{ "other", "On someone else: go get it" }, { "close", "On someone else, you're halfway to taking it back (50%+)" },
+		{ "gaining", "On someone else, you're about to take it back (80%+)" }, { "pet", "On your pet" },
+		{ "loose", "Fighting your group, not on your threat list yet" } },
 	dps = { { "you", "Attacking you" }, { "losing", "On you, someone is about to take it" },
-		{ "gaining", "Careful: you're about to pull it" }, { "pet", "On your pet" }, { "other", "Safe: on someone else" } },
+		{ "other", "Safe: on someone else (under 50%)" }, { "gaining", "Careful: 50-80% of the threat to pull it" },
+		{ "close", "About to pull it (80%+)" }, { "pet", "On your pet" } },
 }
 
 -- Your colour for a state (your own pick from the window, or the default).
@@ -38,14 +40,15 @@ function TT.Color(role, state)
 	return TT.COLORS[role][state]
 end
 
--- Threat shading: while a mob is on someone else, its colour slides from "other" towards
--- "gaining" as your threat gets closer to pulling it (100%). DPS stay fully "other" up to 30%.
-local SHADE_START = { dps = 30, tank = 0 }
-local function Lerp(a, b, t) return { a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t } end
-function TT.Shade(role, pct)
-	local s = SHADE_START[role]
-	local t = math.max(0, math.min(1, (pct - s) / (100 - s)))
-	return Lerp(TT.Color(role, "other"), TT.Color(role, "gaining"), t)
+-- Threat steps: while a mob is on someone else, three clear colour bands show how close you
+-- are to pulling it (DPS) or taking it back (tank). pct = % of the threat needed, 0-100.
+function TT.Band(role, pct)
+	if role == "dps" then
+		if pct >= 80 then return "close" elseif pct >= 50 then return "gaining" end
+	else
+		if pct >= 80 then return "gaining" elseif pct >= 50 then return "close" end
+	end
+	return "other"
 end
 
 -- How close you are to pulling a mob, 0-100 (nil when the game doesn't say).
@@ -160,7 +163,23 @@ local function GetBar(unit)
 	return bar
 end
 
+-- The small threat % to the right of the health bar (our own text, on the bar).
+local numbers = setmetatable({}, { __mode = "k" })
+function TT.SetNumber(bar, pct, c)
+	local t = numbers[bar]
+	if not pct then if t then t:Hide() end return end
+	if not t then
+		t = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		t:SetPoint("LEFT", bar, "RIGHT", 3, 0)
+		numbers[bar] = t
+	end
+	t:SetText(("%d%%"):format(math.floor(pct + 0.5)))
+	t:SetTextColor(c[1], c[2], c[3])
+	t:Show()
+end
+
 local function Restore(bar)
+	TT.SetNumber(bar, nil)
 	if not painted[bar] then return end
 	painted[bar] = nil
 	local o = original[bar]
@@ -175,11 +194,10 @@ function TT.Update(unit)
 	local db = ThreatTintDB
 	local role = TT.IsTank() and "tank" or "dps"
 	local state = db and db.enabled and TT.State(unit)
+	local pct = (state == "other" or state == "gaining") and TT.Percent(unit) or nil
+	if pct and db.shade then state = TT.Band(role, pct) end
 	local c = state and TT.COLORS[role][state] and TT.Color(role, state)
-	if c and db.shade and (state == "other" or state == "gaining") then
-		local pct = TT.Percent(unit)
-		if pct then c = TT.Shade(role, pct) end
-	end
+	TT.SetNumber(bar, c and db.number and pct, c)
 	if c then
 		if not painted[bar] then
 			if not original[bar] then
@@ -224,6 +242,7 @@ ev:SetScript("OnEvent", function(self, event, unit)
 		if db.role ~= "tank" and db.role ~= "dps" then db.role = db.tank and "tank" or "auto" end
 		db.tank = nil
 		if db.shade == nil then db.shade = true end
+		if db.number == nil then db.number = true end
 		if type(db.colors) ~= "table" then db.colors = {} end
 		autoTank = TT.AutoTank()
 		self:RegisterEvent("NAME_PLATE_UNIT_ADDED")
@@ -284,7 +303,7 @@ local function Help()
 		-- a small block of that colour (white texture tinted in the |T escape), then what it means
 		Print(("|TInterface\\Buttons\\WHITE8X8:10:24:0:0:8:8:0:8:0:8:%d:%d:%d|t %s"):format(c[1] * 255, c[2] * 255, c[3] * 255, row[2]))
 	end
-	if db.shade then Print("Shading is on: mobs on someone else fade towards the \"about to pull\" colour as your threat climbs.") end
+	if db.shade then Print("Colour steps are on: the colour of a mob on someone else changes at 50% and 80% of the threat needed.") end
 	Print("Mobs nobody is fighting keep their normal colour. Settings window: " .. W .. "/tint|r")
 	Print("Commands: " .. W .. "/tint auto|r (default), " .. W .. "/tint tank|r, " .. W .. "/tint dps|r, " .. W .. "/tint off|r, " .. W .. "/tint on|r, " .. W .. "/tint help|r")
 end
@@ -293,7 +312,7 @@ end
 -- Settings window (/tint): on/off, role, shading, and the colour legend. Click a colour to change it.
 ------------------------------------------------------------------------
 local win = CreateFrame("Frame", "ThreatTintFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-win:SetSize(340, 380)
+win:SetSize(340, 430)
 win:SetPoint("CENTER")
 win:SetFrameStrata("DIALOG")
 win:SetMovable(true); win:EnableMouse(true); win:SetClampedToScreen(true)
@@ -331,14 +350,15 @@ title:SetPoint("TOP", 0, -18); title:SetText("ThreatTint")
 CreateFrame("Button", nil, win, "UIPanelCloseButton"):SetPoint("TOPRIGHT", -6, -6)
 
 local onChk = Check("Colour enemy nameplates by threat", 18, -42)
-local shadeChk = Check("Shade by threat: show how close you are to pulling", 18, -66)
+local shadeChk = Check("Colour steps by threat % (how close you are to pulling)", 18, -66)
+local numChk = Check("Show the threat % next to each nameplate", 18, -90)
 
-Text(win, "GameFontNormal", 22, -100):SetText("You are:")
+Text(win, "GameFontNormal", 22, -124):SetText("You are:")
 local roleBtns = {}
 local ROLES = { { "auto", "Auto" }, { "tank", "Tank" }, { "dps", "DPS / Healer" } }
 for i, r in ipairs(ROLES) do
 	local b = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
-	b:SetSize(i == 3 and 96 or 60, 20); b:SetPoint("TOPLEFT", 84 + (i - 1) * 66, -96)
+	b:SetSize(i == 3 and 96 or 60, 20); b:SetPoint("TOPLEFT", 84 + (i - 1) * 66, -120)
 	b:SetText(r[2])
 	b:SetScript("OnClick", function()
 		ThreatTintDB.role = r[1]
@@ -347,16 +367,16 @@ for i, r in ipairs(ROLES) do
 	end)
 	roleBtns[r[1]] = b
 end
-local roleNote = Text(win, "GameFontDisableSmall", 22, -122, 296)
+local roleNote = Text(win, "GameFontDisableSmall", 22, -146, 296)
 
-local legendTitle = Text(win, "GameFontNormal", 22, -146)
+local legendTitle = Text(win, "GameFontNormal", 22, -170)
 local rows = {}
-for i = 1, 6 do
+for i = 1, 7 do
 	local sw = CreateFrame("Button", nil, win)
-	sw:SetSize(36, 14); sw:SetPoint("TOPLEFT", 24, -166 - (i - 1) * 22)
+	sw:SetSize(36, 14); sw:SetPoint("TOPLEFT", 24, -190 - (i - 1) * 22)
 	local border = sw:CreateTexture(nil, "BACKGROUND"); border:SetAllPoints(); border:SetColorTexture(0, 0, 0, 1)
 	sw.tex = sw:CreateTexture(nil, "ARTWORK"); sw.tex:SetPoint("TOPLEFT", 1, -1); sw.tex:SetPoint("BOTTOMRIGHT", -1, 1)
-	sw.text = Text(win, "GameFontHighlightSmall", 68, -166 - (i - 1) * 22, 250)
+	sw.text = Text(win, "GameFontHighlightSmall", 68, -190 - (i - 1) * 22, 250)
 	sw:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:AddLine("Click to change this colour"); GameTooltip:Show()
 	end)
@@ -364,17 +384,17 @@ for i = 1, 6 do
 	rows[i] = sw
 end
 
--- Gradient strip: what shading looks like, from far away to about to pull.
-local shadeTitle = Text(win, "GameFontDisableSmall", 22, -302)
+-- Strip: the colour steps, from far away to about to pull.
+local shadeTitle = Text(win, "GameFontDisableSmall", 22, -350)
 local strip = {}
 for i = 1, 20 do
 	local t = win:CreateTexture(nil, "ARTWORK")
-	t:SetSize(13, 10); t:SetPoint("TOPLEFT", 24 + (i - 1) * 13, -318)
+	t:SetSize(13, 10); t:SetPoint("TOPLEFT", 24 + (i - 1) * 13, -366)
 	strip[i] = t
 end
-local farText = Text(win, "GameFontDisableSmall", 24, -330); farText:SetText("far")
+local farText = Text(win, "GameFontDisableSmall", 24, -378); farText:SetText("0%")
 local nearText = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-nearText:SetPoint("TOPRIGHT", win, "TOPLEFT", 24 + 20 * 13, -330); nearText:SetText("about to pull")
+nearText:SetPoint("TOPRIGHT", win, "TOPLEFT", 24 + 20 * 13, -378); nearText:SetText("100%")
 
 local resetBtn = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
 resetBtn:SetSize(110, 20); resetBtn:SetPoint("BOTTOMRIGHT", -18, 16); resetBtn:SetText("Reset colours")
@@ -409,6 +429,7 @@ function win.Update()
 	local role = Role()
 	onChk:SetChecked(db.enabled)
 	shadeChk:SetChecked(db.shade)
+	numChk:SetChecked(db.number)
 	for k, b in pairs(roleBtns) do
 		if b.LockHighlight then if db.role == k then b:LockHighlight() else b:UnlockHighlight() end end
 	end
@@ -428,15 +449,17 @@ function win.Update()
 			sw:Hide(); sw.text:Hide()
 		end
 	end
-	shadeTitle:SetText(db.shade and "Shading (mobs on someone else):" or "Shading is off: mobs on someone else stay one colour.")
+	shadeTitle:SetText(db.shade and ("Colour steps for a mob on someone else, by your threat %" .. (role == "tank" and " (to take it back):" or " (to pull it):"))
+		or "Colour steps are off: mobs on someone else stay one colour.")
 	for i, t in ipairs(strip) do
-		local c = db.shade and TT.Shade(role, (i - 1) / 19 * 100) or TT.Color(role, "other")
+		local c = TT.Color(role, db.shade and TT.Band(role, (i - 1) / 19 * 100) or "other")
 		t:SetColorTexture(c[1], c[2], c[3], 1)
 	end
 end
 
 onChk:SetScript("OnClick", function(self) ThreatTintDB.enabled = self:GetChecked() and true or false; TT.UpdateAll(); win.Update() end)
 shadeChk:SetScript("OnClick", function(self) ThreatTintDB.shade = self:GetChecked() and true or false; TT.UpdateAll(); win.Update() end)
+numChk:SetScript("OnClick", function(self) ThreatTintDB.number = self:GetChecked() and true or false; TT.UpdateAll(); win.Update() end)
 resetBtn:SetScript("OnClick", function() ThreatTintDB.colors[Role()] = nil; TT.UpdateAll(); win.Update() end)
 win:SetScript("OnShow", function() win.Update() end)
 
