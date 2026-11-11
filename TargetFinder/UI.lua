@@ -667,7 +667,10 @@ function TargetFinder_OpenSearch(keystate)
 end
 
 mm:SetScript("OnClick", function(self, button)
-	if button == "RightButton" then TF.QuickEdit(self) else TF.Toggle() end
+	if button == "RightButton" and IsControlKeyDown() then
+		local _, msg = TF.ClearMob(); TF.Print(msg)
+		if GameTooltip:IsOwned(self) then self:GetScript("OnEnter")(self) end -- refresh "Looking for"
+	elseif button == "RightButton" then TF.QuickEdit(self) else TF.Toggle() end
 end)
 mm:SetScript("OnEnter", function(self)
 	GameTooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -680,6 +683,7 @@ mm:SetScript("OnEnter", function(self)
 	GameTooltip:AddLine(" ")
 	GameTooltip:AddLine(WHITE .. "Left-click|r  open Target Finder", 0.8, 0.8, 0.8)
 	GameTooltip:AddLine(WHITE .. "Right-click|r  quick search for a mob", 0.8, 0.8, 0.8)
+	GameTooltip:AddLine(WHITE .. "Ctrl + right-click|r  clear the mob", 0.8, 0.8, 0.8)
 	GameTooltip:AddLine(WHITE .. "Drag|r  move this button", 0.8, 0.8, 0.8)
 	GameTooltip:Show()
 end)
@@ -699,7 +703,9 @@ end
 SLASH_TARGETFINDER1 = "/tfinder"
 SlashCmdList.TARGETFINDER = function(msg)
 	msg = (msg or ""):lower():match("^%s*(.-)%s*$")
-	if msg == "minimap" then
+	if msg == "clear" then
+		local _, m = TF.ClearMob(); TF.Print(m)
+	elseif msg == "minimap" then
 		TargetFinderDB.minimap.hide = not TargetFinderDB.minimap.hide
 		UpdateMinimap()
 		TF.Print("Minimap button " .. (TargetFinderDB.minimap.hide and "hidden. /tfinder minimap to show it." or "shown."))

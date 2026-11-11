@@ -223,6 +223,19 @@ function TF.Track(name)
 	return true, "Queued, applies when combat ends: |cffffffff" .. name .. "|r (the key still searches for the previous name)"
 end
 
+-- Stops looking for anything: the Find key does nothing and the map dots go away.
+function TF.ClearMob()
+	local db = TargetFinderDB
+	if Clean(db.mob) == "" then return true, "Not looking for anything." end
+	db.mob = ""
+	local inFight = InCombatLockdown()
+	TF.Apply()
+	if TF.UpdatePins then TF.UpdatePins() end
+	if TF.Refresh then TF.Refresh() end
+	if not inFight then return true, "Cleared: not looking for a mob now." end
+	return true, "Cleared. You're in a fight, so the key keeps the old search until the fight ends."
+end
+
 ------------------------------------------------------------------------
 -- Favourites
 ------------------------------------------------------------------------

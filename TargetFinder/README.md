@@ -1,4 +1,4 @@
-# Target Finder 3.5 (WoW Forever)
+# Target Finder 3.6 (WoW Forever)
 
 **Press one key to find a mob near you.**
 
@@ -49,6 +49,7 @@ walk around and keep pressing your key.
 
 **Tips**
 - **Right-click** the minimap spyglass for a quick search box.
+- **Ctrl + right-click** the spyglass (or type `/tfinder clear`) to clear the mob, so the key stops searching and the map dots go away.
 - Hover over anything in the window for a short explanation.
 - In a fight you can still press your key. If you change the mob during a fight, the change starts after the fight.
 
