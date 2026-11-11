@@ -21,13 +21,22 @@ local function Join(...) local out = {} for _, t in ipairs({ ... }) do for _, v 
 -- Groups ----------------------------------------------------------------------------------
 -- Names that don't exist on this client are simply skipped.
 local GROUPS = {
-	{ key = "bars", label = "Action bars", tip = "Main bar, extra bars, pet and stance bars, XP and reputation bars.",
-	  names = { "MainMenuBar", "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarRight",
-		"MultiBarLeft", "MultiBar5", "MultiBar6", "MultiBar7", "VerticalMultiBarsContainer", "PetActionBarFrame",
-		"PetActionBar", "StanceBarFrame", "StanceBar", "ShapeshiftBarFrame", "PossessBarFrame", "PossessActionBar",
-		"MultiCastActionBarFrame", "ExtraActionBarFrame", "MainMenuBarVehicleLeaveButton", "MainMenuExpBar",
-		"ReputationWatchBar", "StatusTrackingBarManager", "MainStatusTrackingBarContainer",
-		"SecondaryStatusTrackingBarContainer" } },
+	{ key = "bars", label = "Action bars", tip = "Your action bars. Use \"Choose bars\" to pick which ones.",
+	  subs = {
+		{ key = "main", label = "Main bar", names = { "MainMenuBar", "MainActionBar", "ExtraActionBarFrame", "MainMenuBarVehicleLeaveButton" } },
+		{ key = "bl", label = "Bottom left bar", names = { "MultiBarBottomLeft" } },
+		{ key = "br", label = "Bottom right bar", names = { "MultiBarBottomRight" } },
+		{ key = "r", label = "Right bar", names = { "MultiBarRight" } },
+		{ key = "l", label = "Right bar 2", names = { "MultiBarLeft" } },
+		{ key = "b5", label = "Bar 5", names = { "MultiBar5" } },
+		{ key = "b6", label = "Bar 6", names = { "MultiBar6" } },
+		{ key = "b7", label = "Bar 7", names = { "MultiBar7" } },
+		{ key = "pet", label = "Pet bar", names = { "PetActionBarFrame", "PetActionBar" } },
+		{ key = "stance", label = "Stance / shapeshift bar", names = { "StanceBarFrame", "StanceBar", "ShapeshiftBarFrame",
+			"PossessBarFrame", "PossessActionBar", "MultiCastActionBarFrame" } },
+		{ key = "xp", label = "XP & reputation bars", names = { "MainMenuExpBar", "ReputationWatchBar", "MainMenuBarMaxLevelBar",
+			"StatusTrackingBarManager", "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer" } },
+	  } },
 	{ key = "units", label = "Unit frames", tip = "You, your target, pet, party, raid, boss frames and cast bars.",
 	  names = Join({ "PlayerFrame", "PetFrame", "TargetFrame", "TargetFrameToT", "FocusFrame", "FocusFrameToT",
 		"PartyFrame", "CompactRaidFrameContainer", "CompactPartyFrame", "CompactRaidFrameManager",
@@ -60,13 +69,14 @@ local GROUPS = {
 }
 
 local groupOf = {}    -- frame -> group key
+local subOf = {}      -- frame -> which action bar (inside the "bars" group)
 local touched = {}    -- frames we have changed (so they can be put back to full)
 local hooked = {}
 local own = {}        -- this add-on's own frames are never faded
 
 local function Want(f)
 	local k = groupOf[f]
-	if db and db.on and k and db.groups[k] then return db.level / 100 end
+	if db and db.on and k and db.groups[k] and not (subOf[f] and db.bars[subOf[f]] == false) then return db.level / 100 end
 	return 1
 end
 
@@ -101,13 +111,20 @@ end
 -- Works out which frame belongs to which group. Run often, because many windows are only
 -- created when you first open them.
 local function Scan()
-	local claimed = {}
+	local claimed, newSub = {}, {}
 	for _, g in ipairs(GROUPS) do
 		for _, n in ipairs(g.names or {}) do
 			local f = _G[n]
 			if Usable(f) and not claimed[f] then claimed[f] = g.key end
 		end
+		for _, b in ipairs(g.subs or {}) do
+			for _, n in ipairs(b.names) do
+				local f = _G[n]
+				if Usable(f) and not claimed[f] then claimed[f] = g.key; newSub[f] = b.key end
+			end
+		end
 	end
+	subOf = newSub
 	-- Top-level windows that hold a frame from a named group can't be faded as "everything
 	-- else" without also fading that frame, so those are left alone.
 	local holds = {}
@@ -127,10 +144,13 @@ local function Scan()
 	groupOf = newGroup
 	-- A frame inside another group's frame (menu buttons sit inside the main bar on some
 	-- clients) ignores its parent's fade so each tick box works on its own.
-	for f, k in pairs(claimed) do
+	-- (Each action bar counts separately here, because on some clients the other bars sit
+	-- inside the main bar.)
+	local function Id(f) return claimed[f] and (claimed[f] .. ":" .. (newSub[f] or "")) end
+	for f in pairs(claimed) do
 		local p = f:GetParent()
 		while p and p ~= UIParent do
-			if claimed[p] and claimed[p] ~= k then
+			if claimed[p] and Id(p) ~= Id(f) then
 				if f.SetIgnoreParentAlpha and not InCombatLockdown() then pcall(f.SetIgnoreParentAlpha, f, true) end
 				break
 			end
@@ -178,7 +198,7 @@ end
 -- Settings window -------------------------------------------------------------------------
 frame = CreateFrame("Frame", "UIFadeFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
 own[frame] = true
-frame:SetSize(320, 316)
+frame:SetSize(340, 316)
 frame:SetPoint("CENTER")
 frame:SetFrameStrata("DIALOG")
 frame:SetMovable(true); frame:EnableMouse(true); frame:SetClampedToScreen(true)
@@ -230,7 +250,7 @@ local checks = {}
 for i, g in ipairs(GROUPS) do
 	local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
 	local c = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-	c:SetSize(24, 24); c:SetPoint("TOPLEFT", 18 + col * 145, -122 - row * 26)
+	c:SetSize(24, 24); c:SetPoint("TOPLEFT", 18 + col * 165, -122 - row * 26)
 	local t = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	t:SetPoint("LEFT", c, "RIGHT", 2, 0); t:SetText(g.label)
 	c.label = t
@@ -245,6 +265,61 @@ for i, g in ipairs(GROUPS) do
 	c:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	checks[g.key] = c
 end
+
+-- "Choose..." next to Action bars: a small list with one tick box per bar this client has.
+local barsWin = CreateFrame("Frame", "UIFadeBarsFrame", frame, BackdropTemplateMixin and "BackdropTemplate" or nil)
+barsWin:SetPoint("TOPLEFT", frame, "TOPRIGHT", -4, 0)
+barsWin:SetFrameStrata("DIALOG")
+barsWin:EnableMouse(true)
+if barsWin.SetBackdrop then
+	barsWin:SetBackdrop({
+		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+		tile = true, tileSize = 32, edgeSize = 32,
+		insets = { left = 11, right = 12, top = 12, bottom = 11 },
+	})
+end
+barsWin:Hide()
+local barsTitle = barsWin:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+barsTitle:SetPoint("TOP", 0, -18); barsTitle:SetText("Which action bars fade")
+CreateFrame("Button", nil, barsWin, "UIPanelCloseButton"):SetPoint("TOPRIGHT", -6, -6)
+local barChecks = {}
+local BARS = GROUPS[1].subs
+
+local function BarExists(b)
+	for _, n in ipairs(b.names) do if Usable(_G[n]) then return true end end
+	return false
+end
+
+function barsWin.Update()
+	local y = -42
+	for _, b in ipairs(BARS) do
+		local c = barChecks[b.key]
+		if not c then
+			c = CreateFrame("CheckButton", nil, barsWin, "UICheckButtonTemplate")
+			c:SetSize(24, 24)
+			local t = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			t:SetPoint("LEFT", c, "RIGHT", 2, 0); t:SetText(b.label)
+			c.label = t
+			c:SetScript("OnClick", function(self) db.bars[b.key] = self:GetChecked() and true or false; Update() end)
+			barChecks[b.key] = c
+		end
+		if BarExists(b) then -- bars this client doesn't have aren't listed
+			c:ClearAllPoints(); c:SetPoint("TOPLEFT", 18, y); c:Show()
+			c:SetChecked(db.bars[b.key] ~= false)
+			y = y - 24
+		else
+			c:Hide()
+		end
+	end
+	barsWin:SetSize(210, -y + 18)
+end
+barsWin:SetScript("OnShow", function() barsWin.Update() end)
+
+local barsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+barsBtn:SetSize(64, 18); barsBtn:SetPoint("LEFT", checks.bars.label, "RIGHT", 6, 0)
+barsBtn:SetText("Choose...")
+barsBtn:SetScript("OnClick", function() barsWin:SetShown(not barsWin:IsShown()) end)
 
 local toggle = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 toggle:SetSize(140, 22); toggle:SetPoint("TOP", 0, -260)
@@ -262,6 +337,7 @@ function frame.Update()
 	label:SetText(("Fade to: %d%% visible%s"):format(db.level, db.on and "" or "  (off now)"))
 	toggle:SetText(db.on and "Full brightness" or "Fade")
 	for k, c in pairs(checks) do c:SetChecked(db.groups[k]) end
+	if barsWin:IsShown() then barsWin.Update() end
 	mmChk:SetChecked(not db.minimap.hide)
 end
 
@@ -372,6 +448,8 @@ ev:SetScript("OnEvent", function(_, event)
 			for _, g in ipairs(GROUPS) do db.groups[g.key] = true end
 		end
 		for _, g in ipairs(GROUPS) do db.groups[g.key] = db.groups[g.key] and true or false end
+		if type(db.bars) ~= "table" then db.bars = {} end
+		for _, b in ipairs(GROUPS[1].subs) do db.bars[b.key] = db.bars[b.key] ~= false end
 		UpdateButton()
 		if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(1, function() if db.on then Update() end end) end
 	end
