@@ -15,7 +15,11 @@ local DEFAULTS = {
 	enabled = true,
 	items = true, minQuality = 0,
 	money = true, currency = true, honor = true,
-	quest = true, ilvl = true,
+	quest = true, ilvl = true, upgrade = true,
+	vendor = "grey", -- sell value: "off", "grey" (junk only) or "all"
+	banner = true, bannerMin = 3, edgeGlow = true,
+	gph = false, gphLoginReset = true, gphPos = { x = 0, y = -260 },
+	session = { secs = 0, money = 0, items = 0 },
 	bagCount = true, fancy = true, growUp = true,
 	anim = "stack",
 	scale = 1.0, duration = 4, maxLines = 8,
@@ -327,6 +331,7 @@ function LF.Add(e)
 				if anim == "rise" then l.boost = l.boost + max(0, l.t - POP) * RISE end
 				l.t = min(l.t, POP)
 				l.pulse = 0
+				l.isNew = false
 				Render(l)
 				return l
 			end
@@ -337,6 +342,7 @@ function LF.Add(e)
 	l.key, l.label, l.count, l.q, l.name = e.key, e.label, e.count or 1, q, e.name
 	l.t, l.y, l.pulse, l.boost, l.rise = 0, 0, nil, 0, 0
 	l.bags, l.ilvl, l.qdone, l.qneed, l.quest = nil, nil, nil, nil, nil
+	l.up, l.upEmpty, l.price, l.isNew = nil, nil, nil, true
 	l.icon:SetTexture(e.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
 	local r, g, b
 	if e.color then r, g, b = e.color[1], e.color[2], e.color[3] else r, g, b = LF.QualityColor(q) end
@@ -452,23 +458,70 @@ function LF.QuestProgress(name)
 	end
 end
 
+-- Gear slot(s) each kind of item goes in, for the upgrade check.
+local SLOTS = {
+	INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 }, INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 },
+	INVTYPE_WAIST = { 6 }, INVTYPE_LEGS = { 7 }, INVTYPE_FEET = { 8 }, INVTYPE_WRIST = { 9 }, INVTYPE_HAND = { 10 },
+	INVTYPE_FINGER = { 11, 12 }, INVTYPE_TRINKET = { 13, 14 }, INVTYPE_CLOAK = { 15 },
+	INVTYPE_WEAPON = { 16 }, INVTYPE_2HWEAPON = { 16 }, INVTYPE_WEAPONMAINHAND = { 16 },
+	INVTYPE_SHIELD = { 17 }, INVTYPE_WEAPONOFFHAND = { 17 }, INVTYPE_HOLDABLE = { 17 },
+	INVTYPE_RANGED = { 18 }, INVTYPE_RANGEDRIGHT = { 18 }, INVTYPE_THROWN = { 18 }, INVTYPE_RELIC = { 18 },
+}
+
+-- How many item levels better than what you wear in that slot (for rings and trinkets, the
+-- weaker of the two). Returns levels, emptySlot; nil when it isn't better or can't be told.
+function LF.UpgradeBy(equipLoc, lvl)
+	local slots = SLOTS[equipLoc]
+	if not slots or not lvl or not GetInfo or not GetInventoryItemLink then return nil end
+	local worst, empty
+	for _, slot in ipairs(slots) do
+		local ok, link = pcall(GetInventoryItemLink, "player", slot)
+		link = ok and Str(link)
+		local cur
+		if not ok or Secret(link) then return nil end
+		if not link then
+			cur, empty = 0, true
+		else
+			local okI, _, _, _, il = pcall(GetInfo, link)
+			cur = okI and Num(il)
+			if not cur then return nil end -- not loaded yet: say nothing rather than guess
+		end
+		if not worst or cur < worst then worst = cur end
+	end
+	if worst and lvl > worst then return lvl - worst, empty and worst == 0 end
+end
+
 local function ItemLabel(n, l)
 	local db, parts = LF.db, {}
 	if n > 1 then parts[#parts + 1] = "|cffffffffx" .. n .. "|r" end
 	if l.qneed then
 		parts[#parts + 1] = l.qdone >= l.qneed and "|cff33ff33Done!|r" or ("|cffffd100" .. l.qdone .. "/" .. l.qneed .. "|r")
 	end
+	if db.upgrade and l.up then
+		parts[#parts + 1] = l.upEmpty and "|cff33ff33Upgrade (empty slot)|r" or ("|cff33ff33Upgrade +" .. l.up .. "|r")
+	end
 	if db.ilvl and l.ilvl then parts[#parts + 1] = "|cffc8c8c8ilvl " .. l.ilvl .. "|r" end
+	if l.price and l.price > 0 and (db.vendor == "all" or (db.vendor == "grey" and l.q == 0)) then
+		parts[#parts + 1] = "|cffbbbbbbsells " .. LF.FormatMoney(l.price * n) .. "|r"
+	end
 	if db.bagCount and l.bags and l.bags > n and not l.qneed then parts[#parts + 1] = "|cff9a9a9a(" .. l.bags .. ")|r" end
 	return l.name, table.concat(parts, " ")
 end
+LF.ItemLabel = ItemLabel
 
--- Fills in item level, quest progress and bag count (item info can arrive a moment later).
+-- Fills in item level, upgrade, sell price, quest progress and bag count
+-- (item info can arrive a moment after the loot message).
 local function Details(l, link, id, equipLoc)
 	local db = LF.db
-	if db.ilvl and GetInfo and equipLoc and not NO_ILVL[equipLoc] then
-		local ok, _, _, _, lvl = pcall(GetInfo, link)
-		if ok then l.ilvl = Num(lvl) and lvl > 1 and lvl or l.ilvl end
+	if GetInfo then
+		local ok, _, _, _, lvl, _, _, _, _, _, _, price = pcall(GetInfo, link)
+		if ok then
+			if equipLoc and not NO_ILVL[equipLoc] and Num(lvl) and lvl > 1 then
+				l.ilvl = lvl
+				l.up, l.upEmpty = LF.UpgradeBy(equipLoc, lvl)
+			end
+			if Num(price) then l.price = price end
+		end
 	end
 	if db.quest then
 		local have, need = LF.QuestProgress(l.name)
@@ -480,8 +533,22 @@ local function Details(l, link, id, equipLoc)
 	end
 end
 
+-- Vendor value of what you looted, for the gold-per-hour tracker (counted even when the
+-- line itself is filtered out). Item info may need a moment, so it retries once.
+local function CountValue(link, count, retry)
+	if not (LF.AddValue and LF.db.gph and GetInfo) then return end
+	local ok, _, _, _, _, _, _, _, _, _, _, price = pcall(GetInfo, link)
+	price = ok and Num(price)
+	if price then
+		if price > 0 then LF.AddValue("items", price * count) end
+	elseif not retry and C_Timer then
+		C_Timer.After(1, function() CountValue(link, count, true) end)
+	end
+end
+
 function LF.ShowItem(link, count, sound)
 	local db = LF.db
+	CountValue(link, count)
 	if not db.items then return end
 	local name = link:match("%[(.-)%]") or link
 	local q
@@ -497,9 +564,9 @@ function LF.ShowItem(link, count, sound)
 	local l = LF.Add({ key = "item:" .. (id or name), icon = icon, q = q, count = count, isItem = true,
 		quest = isQuest, sound = sound, label = ItemLabel, name = name })
 	if not l then return end
-	l.name = name
 	Details(l, link, id, equipLoc)
 	Render(l)
+	if l.isNew and db.banner and q >= db.bannerMin and LF.Banner then LF.Banner(l) end
 	if C_Timer then
 		C_Timer.After(0.6, function()
 			if l.key ~= "item:" .. (id or name) then return end
@@ -596,7 +663,10 @@ ev:SetScript("OnEvent", function(_, e, a1)
 	elseif e == "PLAYER_MONEY" then
 		local m = Num(GetMoney())
 		if not m then return end
-		if lastMoney and m > lastMoney and not busy.MERCHANT and not busy.TRADE then LF.ShowMoney(m - lastMoney) end
+		if lastMoney and m > lastMoney and not busy.MERCHANT and not busy.TRADE then
+			if LF.AddValue and LF.db.gph then LF.AddValue("money", m - lastMoney) end
+			LF.ShowMoney(m - lastMoney)
+		end
 		lastMoney = m
 	elseif e == "MERCHANT_SHOW" then busy.MERCHANT = true
 	elseif e == "MERCHANT_CLOSED" then busy.MERCHANT = nil
@@ -625,14 +695,15 @@ function LF.ResetPosition()
 	LF.ApplyLook()
 end
 
+-- icon, quality, name, count, quest progress, item level, upgrade by, sell price, delay
 local TEST = {
-	{ "Interface\\Icons\\INV_Misc_Bone_01", 0, "Cracked Bone", 3 },
-	{ "Interface\\Icons\\INV_Misc_Food_15", 1, "Tough Jerky", 4 },
-	{ "Interface\\Icons\\INV_Misc_Pelt_Bear_03", 1, "Bear Pelt", 1, { 3, 8 } },
-	{ "Interface\\Icons\\INV_Misc_Herb_07", 2, "Peacebloom", 2 },
-	{ "Interface\\Icons\\INV_Sword_04", 3, "Blade of the Test", 1, nil, 18 },
-	{ "Interface\\Icons\\INV_Helmet_08", 4, "Crown of Shiny Things", 1, nil, 42 },
-	{ "Interface\\Icons\\INV_Staff_13", 5, "Staff of Utter Brilliance", 1, nil, 60 },
+	{ "Interface\\Icons\\INV_Misc_Bone_01", 0, "Cracked Bone", 3, nil, nil, nil, 15, 0 },
+	{ "Interface\\Icons\\INV_Misc_Food_15", 1, "Tough Jerky", 4, nil, nil, nil, 25, 0.4 },
+	{ "Interface\\Icons\\INV_Misc_Pelt_Bear_03", 1, "Bear Pelt", 1, { 3, 8 }, nil, nil, 0, 0.8 },
+	{ "Interface\\Icons\\INV_Misc_Herb_07", 2, "Peacebloom", 2, nil, nil, nil, 10, 1.2 },
+	{ "Interface\\Icons\\INV_Sword_04", 3, "Blade of the Test", 1, nil, 18, nil, 950, 1.6 },
+	{ "Interface\\Icons\\INV_Helmet_08", 4, "Crown of Shiny Things", 1, nil, 42, 7, 4200, 3.2 },
+	{ "Interface\\Icons\\INV_Staff_13", 5, "Staff of Utter Brilliance", 1, nil, 60, 15, 25000, 4.8 },
 }
 function LF.Test()
 	local wasOn = LF.db.enabled
@@ -642,15 +713,17 @@ function LF.Test()
 		local l = LF.Add({ key = "test" .. i, icon = t[1], q = t[2], count = t[4], isItem = true,
 			quest = t[5] ~= nil and LF.db.quest, label = ItemLabel, name = t[3] })
 		if l then
-			l.ilvl = LF.db.ilvl and t[6] or nil
+			l.ilvl = t[6]
+			l.up, l.price = t[7], t[8]
 			if t[5] and LF.db.quest then l.qdone, l.qneed = t[5][1], t[5][2] end
 			Render(l)
+			if l.isNew and LF.db.banner and t[2] >= LF.db.bannerMin and LF.Banner then LF.Banner(l) end
 		end
 		if i == 1 then LF.ShowMoney(12345) end
 		LF.db.enabled = wasOn
 	end
 	for i = 1, #TEST do
-		if C_Timer then C_Timer.After((i - 1) * 0.5, function() one(i) end) else one(i) end
+		if C_Timer then C_Timer.After(TEST[i][9], function() one(i) end) else one(i) end
 	end
 end
 

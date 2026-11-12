@@ -6,7 +6,7 @@ local function db() return LF.db end
 -- Window (two columns)
 ------------------------------------------------------------------------
 local panel = CreateFrame("Frame", "LootFlareOptionsFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-panel:SetSize(610, 545)
+panel:SetSize(610, 590)
 panel:SetPoint("CENTER", 0, 30)
 panel:SetFrameStrata("DIALOG")
 panel:SetMovable(true)
@@ -98,6 +98,17 @@ Stepper("Items from", function()
 end, function(d) db().minQuality = Clamp(db().minQuality + d, 0, 5) end)
 Opt("Mark quest items, with your progress (3/8)", "quest")
 Opt("Item level on gear", "ilvl")
+Opt("\"Upgrade +5\" when gear beats what you wear", "upgrade")
+local VENDOR = { { "off", "Off" }, { "grey", "Junk only" }, { "all", "Everything" } }
+local function VendorIndex()
+	for i, v in ipairs(VENDOR) do if v[1] == db().vendor then return i end end
+	return 2
+end
+Stepper("Sell value", function() return VENDOR[VendorIndex()][2] end, function(d)
+	local i = VendorIndex() + d
+	if i < 1 then i = #VENDOR elseif i > #VENDOR then i = 1 end
+	db().vendor = VENDOR[i][1]
+end)
 Opt("How many you now have, e.g. (23)", "bagCount")
 Opt("Money", "money")
 Opt("Currency", "currency")
@@ -168,18 +179,39 @@ sh:SetPoint("TOPLEFT", cx + 6, y - 2)
 sh:SetWidth(COLW - 10)
 sh:SetJustifyH("LEFT")
 sh:SetText("Click a sound to change it, right-click to go back.")
-y = y - 26
+y = y - 22
 
+Header("Big banner")
+Opt("Banner across the screen for great drops", "banner")
+Stepper("Banner from", function()
+	local q = db().bannerMin
+	return QHex(q) .. LF.QUALITY_NAMES[q] .. "|r"
+end, function(d) db().bannerMin = Clamp(db().bannerMin + d, 3, 5) end)
+Opt("Glow around the screen edge too", "edgeGlow")
+
+y = y - 4
+Header("Gold per hour")
+Opt("Show the gold-per-hour box", "gph", function() LF.ApplyGold() end)
+Opt("Start over each time I log in", "gphLoginReset")
+do
+	local b = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	b:SetSize(110, 22); b:SetPoint("TOPLEFT", cx + 6, y)
+	b:SetText("Start over now")
+	b:SetScript("OnClick", function() LF.ResetGold() end)
+	y = y - 28
+end
+
+y = y - 4
 Header("Other")
 Check("Show minimap button", function() return not db().minimap.hide end, function(v)
 	db().minimap.hide = not v
 	LF.UpdateMinimapButton()
 end)
 local tips = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-tips:SetPoint("TOPLEFT", cx + 6, y - 6)
+tips:SetPoint("TOPLEFT", cx + 6, y - 4)
 tips:SetWidth(COLW - 10)
 tips:SetJustifyH("LEFT")
-tips:SetText("/lflare test - show sample loot\n/lflare on | off\n/lflare move - drag the text somewhere else\n\nThe same item looted again joins its line (x5) instead of adding a new one.")
+tips:SetText("/lflare test, on, off, move, reset")
 
 -- Bottom buttons
 local move = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
