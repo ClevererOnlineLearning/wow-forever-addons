@@ -1,5 +1,6 @@
 -- Loot Flare: what you loot appears as a short, tidy stack of lines mid-screen.
--- Good drops get a rarity glow, a shine sweep and a sound of their own.
+-- Good drops get a rarity glow, a shine sweep and a sound of their own; quest items are
+-- marked and show your quest progress.
 -- Written from scratch by good mens (Mephz on WoW Forever). MIT licence.
 
 local LF = {}
@@ -14,9 +15,11 @@ local DEFAULTS = {
 	enabled = true,
 	items = true, minQuality = 0,
 	money = true, currency = true, honor = true,
+	quest = true, ilvl = true,
 	bagCount = true, fancy = true, growUp = true,
+	anim = "stack",
 	scale = 1.0, duration = 4, maxLines = 8,
-	sounds = { [2] = 0, [3] = 878, [4] = 888, [5] = 8959 },
+	sounds = { [2] = 0, [3] = 878, [4] = 888, [5] = 8959, quest = 0 },
 	pos = { x = 0, y = 140 },
 	locked = true,
 	minimap = { hide = false, angle = 200 },
@@ -45,20 +48,30 @@ LF.SOUNDS = {
 	{ id = 1115, name = "Click" },
 }
 
+LF.ANIMS = {
+	{ key = "stack", name = "Stack" },   -- new line pops in, older ones glide up
+	{ key = "slide", name = "Slide in" }, -- new line slides in from the left
+	{ key = "bounce", name = "Bounce" }, -- new line drops in and bounces
+	{ key = "rise", name = "Float up" }, -- every line drifts up on its own as it fades
+}
+
 LF.QUALITY_NAMES = { [0] = "Poor", "Common", "Uncommon", "Rare", "Epic", "Legendary", "Artifact", "Heirloom" }
 local QCOL = {
 	[0] = { 0.62, 0.62, 0.62 }, { 1, 1, 1 }, { 0.12, 1, 0 }, { 0, 0.44, 0.87 },
 	{ 0.64, 0.21, 0.93 }, { 1, 0.5, 0 }, { 0.9, 0.8, 0.5 }, { 0, 0.8, 1 },
 }
+local QUEST_COL = { 1, 0.82, 0 }
 local HEXQ = { ["9d9d9d"] = 0, ["ffffff"] = 1, ["1eff00"] = 2, ["0070dd"] = 3, ["a335ee"] = 4, ["ff8000"] = 5, ["e6cc80"] = 6, ["00ccff"] = 7 }
 function LF.QualityColor(q) local c = QCOL[q] or QCOL[1]; return c[1], c[2], c[3] end
 
 local function Secret(v) return issecretvalue and issecretvalue(v) or false end
+local function Num(v) return type(v) == "number" and not Secret(v) and v or nil end
+local function Str(v) return type(v) == "string" and not Secret(v) and v or nil end
 
 ------------------------------------------------------------------------
 -- Display: a holder at the anchor, a pool of line frames, one OnUpdate
 ------------------------------------------------------------------------
-local SPACING, POP, FADE, SWEEP, SWEEP_GAP = 30, 0.2, 0.6, 0.55, 1.1
+local SPACING, POP, FADE, SWEEP, SWEEP_GAP, RISE = 30, 0.2, 0.6, 0.55, 1.1, 32
 local holder = CreateFrame("Frame", "LootFlareAnchor", UIParent)
 holder:SetSize(240, 30)
 holder:SetMovable(true)
@@ -108,6 +121,10 @@ local function NewLine()
 	l.border:SetBlendMode("ADD")
 	l.border:SetSize(46, 46)
 	l.border:SetPoint("CENTER", l.icon)
+	l.badge = l:CreateTexture(nil, "OVERLAY", nil, 2)
+	l.badge:SetTexture("Interface\\GossipFrame\\AvailableQuestIcon")
+	l.badge:SetSize(14, 14)
+	l.badge:SetPoint("TOPLEFT", l.icon, "TOPLEFT", -5, 5)
 	l.text = l:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	l.text:SetPoint("LEFT", l.icon, "RIGHT", 6, 0)
 	l.text:SetShadowOffset(1, -1)
@@ -139,7 +156,7 @@ local function Measure(l)
 end
 
 local function Render(l)
-	local text, extra = l.label(l.count)
+	local text, extra = l.label(l.count, l)
 	l.text:SetText(text)
 	l.extra:SetText(extra or "")
 	Measure(l)
@@ -148,6 +165,29 @@ end
 local function Layout()
 	local dir = LF.db.growUp and 1 or -1
 	for i, l in ipairs(active) do l.ty = (i - 1) * SPACING * dir end
+end
+
+-- Lines in "Float up" drift on their own; keep each one at least a line above the newer one.
+local function RisePositions()
+	local prev
+	for _, l in ipairs(active) do
+		local m = l.t * RISE + l.boost
+		if prev and m < prev + SPACING then
+			l.boost = l.boost + (prev + SPACING - m)
+			m = prev + SPACING
+		end
+		l.rise = m
+		prev = m
+	end
+end
+
+local function Bounce(p) -- 0..1 -> 0..1, lands with two small bounces
+	if p < 1 / 2.75 then return 7.5625 * p * p
+	elseif p < 2 / 2.75 then p = p - 1.5 / 2.75; return 7.5625 * p * p + 0.75
+	elseif p < 2.5 / 2.75 then p = p - 2.25 / 2.75; return 7.5625 * p * p + 0.9375
+	end
+	p = p - 2.625 / 2.75
+	return 7.5625 * p * p + 0.984375
 end
 
 local function Effects(l, t)
@@ -186,9 +226,20 @@ end
 local function Step(l, dt)
 	l.t = l.t + dt
 	local t = l.t
-	l.y = l.y + (l.ty - l.y) * min(1, dt * 10)
+	local anim = LF.db.anim
+	local dir = LF.db.growUp and 1 or -1
+	local x, yo = 0, 0
+	if anim == "rise" then
+		l.y = (l.rise or 0) * dir
+	else
+		l.y = l.y + (l.ty - l.y) * min(1, dt * 10)
+	end
 	local s = 1
-	if t < POP then
+	if anim == "slide" then
+		if t < 0.35 then local p = 1 - t / 0.35; x = -170 * p * p * p end
+	elseif anim == "bounce" then
+		if t < 0.65 then yo = 55 * (1 - Bounce(t / 0.65)) end
+	elseif t < POP then
 		local p = 1 - t / POP
 		s = 1 + (l.pop - 1) * p * p * p
 	end
@@ -198,9 +249,10 @@ local function Step(l, dt)
 	end
 	l:SetScale(s)
 	l:ClearAllPoints()
-	l:SetPoint("CENTER", holder, "CENTER", 0, l.y / s)
+	l:SetPoint("CENTER", holder, "CENTER", x / s, (l.y + yo) / s)
 	local a = 1
-	if t < 0.12 then a = t / 0.12 elseif t > l.life - FADE then a = max(0, (l.life - t) / FADE) end
+	local fadeIn = anim == "slide" and 0.25 or 0.12
+	if t < fadeIn then a = t / fadeIn elseif t > l.life - FADE then a = max(0, (l.life - t) / FADE) end
 	l:SetAlpha(a)
 	if l.fx >= 1 then Effects(l, t) end
 	return t >= l.life
@@ -213,6 +265,11 @@ local function Release(l)
 end
 
 driver:SetScript("OnUpdate", function(self, dt)
+	if LF.db.anim == "rise" then
+		for _, l in ipairs(active) do l.t = l.t + dt end
+		RisePositions()
+		for _, l in ipairs(active) do l.t = l.t - dt end
+	end
 	local i = 1
 	local removed = false
 	while i <= #active do
@@ -228,23 +285,46 @@ driver:SetScript("OnUpdate", function(self, dt)
 end)
 
 local lastSound = {}
-local function PlayFor(q)
-	local id = LF.db.sounds[q]
-	if not id or id == 0 then return end
+local function PlayFor(key)
+	local id = LF.db.sounds[key]
+	if not id or id == 0 then return false end
 	local now = GetTime()
-	if lastSound[q] and now - lastSound[q] < 0.3 then return end
-	lastSound[q] = now
+	if lastSound[key] and now - lastSound[key] < 0.3 then return true end
+	lastSound[key] = now
 	pcall(PlaySound, id, "Master")
+	return true
 end
 LF.PlaySoundID = function(id) if id and id ~= 0 then pcall(PlaySound, id, "Master") end end
 
--- e = { key, icon, q, count, label = function(count) return text, extra end, color = {r,g,b}, sound = bool }
+-- Turns a line into a quest line: gold name, "!" badge, gold glow with one shine.
+local function QuestStyle(l)
+	if l.quest then return end
+	l.quest = true
+	l.text:SetTextColor(QUEST_COL[1], QUEST_COL[2], QUEST_COL[3])
+	l.badge:Show()
+	if LF.db.fancy and l.fx == 0 then
+		l.fx = 1
+		Band(l.bandL, QUEST_COL[1], QUEST_COL[2], QUEST_COL[3], 0, 1)
+		Band(l.bandR, QUEST_COL[1], QUEST_COL[2], QUEST_COL[3], 1, 0)
+		l.bandL:Show(); l.bandR:Show()
+		l.border:SetVertexColor(QUEST_COL[1], QUEST_COL[2], QUEST_COL[3])
+		l.border:Show()
+		if l.t > 0.15 then l.t = 0.15 end -- so its shine still plays
+		l.life = max(l.life, LF.db.duration * 1.3)
+	end
+end
+LF.QuestStyle = QuestStyle
+
+-- e = { key, icon, q, count, label = function(count, line) return text, extra end,
+--       color = {r,g,b}, isItem = bool, quest = bool, sound = bool }
 function LF.Add(e)
 	if not LF.db or not LF.db.enabled then return end
+	local anim = LF.db.anim
 	if e.key then
 		for _, l in ipairs(active) do
 			if l.key == e.key and l.t < l.life - FADE then
 				l.count = l.count + (e.count or 1)
+				if anim == "rise" then l.boost = l.boost + max(0, l.t - POP) * RISE end
 				l.t = min(l.t, POP)
 				l.pulse = 0
 				Render(l)
@@ -254,8 +334,9 @@ function LF.Add(e)
 	end
 	local l = table.remove(pool) or NewLine()
 	local q = e.q or 1
-	l.key, l.label, l.count, l.q = e.key, e.label, e.count or 1, q
-	l.t, l.y, l.pulse = 0, 0, nil
+	l.key, l.label, l.count, l.q, l.name = e.key, e.label, e.count or 1, q, e.name
+	l.t, l.y, l.pulse, l.boost, l.rise = 0, 0, nil, 0, 0
+	l.bags, l.ilvl, l.qdone, l.qneed, l.quest = nil, nil, nil, nil, nil
 	l.icon:SetTexture(e.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
 	local r, g, b
 	if e.color then r, g, b = e.color[1], e.color[2], e.color[3] else r, g, b = LF.QualityColor(q) end
@@ -271,10 +352,11 @@ function LF.Add(e)
 	l.border:SetVertexColor(r, g, b)
 	l.border:SetShown(e.isItem and q >= 2)
 	l.border:SetAlpha(0.9)
+	l.badge:Hide()
 	l.spark:Hide()
 	for _, s in ipairs(l.stars) do s:Hide() end
+	if e.quest then QuestStyle(l) end
 	Render(l)
-	l.bags = nil
 	table.insert(active, 1, l)
 	-- too many lines: the oldest fade out quickly, and past a hard cap they go at once
 	while #active > LF.db.maxLines + 4 do Release(table.remove(active)) end
@@ -282,13 +364,16 @@ function LF.Add(e)
 		local old = active[i]
 		if old.t < old.life - 0.3 then old.life = old.t + 0.3 end
 	end
-	-- new line starts where the newest slot is; older lines glide to their new slots
+	-- new line starts at the anchor; older lines glide to their new slots
 	Layout()
+	if anim == "rise" then RisePositions() end
 	l.y = 0
 	Step(l, 0)
 	l:Show()
 	driver:Show()
-	if e.sound ~= false and e.isItem then PlayFor(q) end
+	if e.sound ~= false and e.isItem then
+		if not (l.quest and PlayFor("quest")) then PlayFor(q) end
+	end
 	return l
 end
 
@@ -334,6 +419,9 @@ end
 local GetInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
 local GetInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
 local GetCount = (C_Item and C_Item.GetItemCount) or GetItemCount
+local QUEST_CLASS = (Enum and Enum.ItemClass and Enum.ItemClass.Questitem) or 12
+local NO_ILVL = { [""] = true, INVTYPE_NON_EQUIP = true, INVTYPE_NON_EQUIP_IGNORE = true, INVTYPE_BAG = true,
+	INVTYPE_QUIVER = true, INVTYPE_AMMO = true, INVTYPE_TABARD = true, INVTYPE_BODY = true }
 
 local function LinkQuality(link)
 	local q = link:match("|cnIQ(%d+):")
@@ -342,35 +430,83 @@ local function LinkQuality(link)
 	return hex and HEXQ[hex:lower()]
 end
 
+-- "Bear Pelt: 3/8" in your quest log -> 3, 8 (nil when no quest wants this item)
+function LF.QuestProgress(name)
+	local Q = C_QuestLog
+	if not (Q and Q.GetNumQuestLogEntries and Q.GetInfo and Q.GetQuestObjectives) then return nil end
+	local ok, n = pcall(Q.GetNumQuestLogEntries)
+	n = ok and Num(n)
+	if not n then return nil end
+	for i = 1, n do
+		local okI, info = pcall(Q.GetInfo, i)
+		if okI and type(info) == "table" and not info.isHeader and Num(info.questID) then
+			local okO, objs = pcall(Q.GetQuestObjectives, info.questID)
+			if okO and type(objs) == "table" then
+				for _, o in ipairs(objs) do
+					local text = Str(o.text)
+					local have, need = Num(o.numFulfilled), Num(o.numRequired)
+					if text and have and need and need > 0 and text:find(name, 1, true) then return have, need end
+				end
+			end
+		end
+	end
+end
+
+local function ItemLabel(n, l)
+	local db, parts = LF.db, {}
+	if n > 1 then parts[#parts + 1] = "|cffffffffx" .. n .. "|r" end
+	if l.qneed then
+		parts[#parts + 1] = l.qdone >= l.qneed and "|cff33ff33Done!|r" or ("|cffffd100" .. l.qdone .. "/" .. l.qneed .. "|r")
+	end
+	if db.ilvl and l.ilvl then parts[#parts + 1] = "|cffc8c8c8ilvl " .. l.ilvl .. "|r" end
+	if db.bagCount and l.bags and l.bags > n and not l.qneed then parts[#parts + 1] = "|cff9a9a9a(" .. l.bags .. ")|r" end
+	return l.name, table.concat(parts, " ")
+end
+
+-- Fills in item level, quest progress and bag count (item info can arrive a moment later).
+local function Details(l, link, id, equipLoc)
+	local db = LF.db
+	if db.ilvl and GetInfo and equipLoc and not NO_ILVL[equipLoc] then
+		local ok, _, _, _, lvl = pcall(GetInfo, link)
+		if ok then l.ilvl = Num(lvl) and lvl > 1 and lvl or l.ilvl end
+	end
+	if db.quest then
+		local have, need = LF.QuestProgress(l.name)
+		if have then l.qdone, l.qneed = have, need; QuestStyle(l) end
+	end
+	if db.bagCount and id and GetCount then
+		local ok, c = pcall(GetCount, id)
+		if ok and Num(c) then l.bags = c end
+	end
+end
+
 function LF.ShowItem(link, count, sound)
 	local db = LF.db
 	if not db.items then return end
 	local name = link:match("%[(.-)%]") or link
 	local q
 	if GetInfo then q = select(3, GetInfo(link)) end
-	q = q or LinkQuality(link) or 1
-	if q < db.minQuality then return end
-	local id, icon
+	q = Num(q) or LinkQuality(link) or 1
+	local id, icon, equipLoc, classID
 	if GetInstant then
-		local r1, _, _, _, r5 = GetInstant(link)
-		id, icon = r1, r5
+		local r1, _, _, r4, r5, r6 = GetInstant(link)
+		id, equipLoc, icon, classID = r1, r4, r5, r6
 	end
-	local l
-	l = LF.Add({
-		key = "item:" .. (id or name), icon = icon, q = q, count = count, isItem = true, sound = sound,
-		label = function(n)
-			local extra = n > 1 and ("|cffffffffx" .. n .. "|r") or ""
-			if db.bagCount and l and l.bags and l.bags > n then
-				extra = extra .. (extra ~= "" and " " or "") .. "|cff9a9a9a(" .. l.bags .. ")|r"
-			end
-			return name, extra
-		end,
-	})
-	if l and id and db.bagCount and GetCount and C_Timer then
+	local isQuest = db.quest and classID == QUEST_CLASS
+	if q < db.minQuality and not isQuest then return end
+	local l = LF.Add({ key = "item:" .. (id or name), icon = icon, q = q, count = count, isItem = true,
+		quest = isQuest, sound = sound, label = ItemLabel, name = name })
+	if not l then return end
+	l.name = name
+	Details(l, link, id, equipLoc)
+	Render(l)
+	if C_Timer then
 		C_Timer.After(0.6, function()
-			if l.key ~= "item:" .. id then return end
-			local ok, c = pcall(GetCount, id)
-			if ok and type(c) == "number" and not Secret(c) then l.bags = c; Render(l) end
+			if l.key ~= "item:" .. (id or name) then return end
+			local wasQuest = l.quest
+			Details(l, link, id, equipLoc)
+			Render(l)
+			if l.quest and not wasQuest and sound ~= false then PlayFor("quest") end
 		end)
 	end
 end
@@ -422,19 +558,21 @@ local function Reg(e) pcall(ev.RegisterEvent, ev, e) end
 Reg("ADDON_LOADED"); Reg("PLAYER_LOGIN")
 local lastMoney, busy = nil, {}
 
+local function Init()
+	LootFlareDB = LootFlareDB or {}
+	Fill(LootFlareDB, DEFAULTS)
+	LF.db = LootFlareDB
+end
+
 ev:SetScript("OnEvent", function(_, e, a1)
 	if e == "ADDON_LOADED" then
-		if a1 ~= "LootFlare" then return end
-		LootFlareDB = LootFlareDB or {}
-		Fill(LootFlareDB, DEFAULTS)
-		LF.db = LootFlareDB
+		if a1 == "LootFlare" then Init() end
 		return
 	elseif e == "PLAYER_LOGIN" then
-		if not LF.db then LootFlareDB = LootFlareDB or {}; Fill(LootFlareDB, DEFAULTS); LF.db = LootFlareDB end
+		if not LF.db then Init() end
 		Build(ITEM_KEYS, ITEM_FALLBACK, itemPats)
 		Build(CUR_KEYS, CUR_FALLBACK, curPats)
-		local m = GetMoney and GetMoney()
-		if type(m) == "number" and not Secret(m) then lastMoney = m end
+		lastMoney = Num(GetMoney and GetMoney())
 		for _, x in ipairs({ "CHAT_MSG_LOOT", "CHAT_MSG_CURRENCY", "CHAT_MSG_COMBAT_HONOR_GAIN", "PLAYER_MONEY",
 			"MERCHANT_SHOW", "MERCHANT_CLOSED", "TRADE_SHOW", "TRADE_CLOSED" }) do Reg(x) end
 		LF.ApplyLook()
@@ -456,8 +594,8 @@ ev:SetScript("OnEvent", function(_, e, a1)
 		for d in a1:gmatch("(%d+)") do last = d end
 		if last then LF.ShowHonor(tonumber(last)) end
 	elseif e == "PLAYER_MONEY" then
-		local m = GetMoney()
-		if type(m) ~= "number" or Secret(m) then return end
+		local m = Num(GetMoney())
+		if not m then return end
 		if lastMoney and m > lastMoney and not busy.MERCHANT and not busy.TRADE then LF.ShowMoney(m - lastMoney) end
 		lastMoney = m
 	elseif e == "MERCHANT_SHOW" then busy.MERCHANT = true
@@ -490,18 +628,24 @@ end
 local TEST = {
 	{ "Interface\\Icons\\INV_Misc_Bone_01", 0, "Cracked Bone", 3 },
 	{ "Interface\\Icons\\INV_Misc_Food_15", 1, "Tough Jerky", 4 },
+	{ "Interface\\Icons\\INV_Misc_Pelt_Bear_03", 1, "Bear Pelt", 1, { 3, 8 } },
 	{ "Interface\\Icons\\INV_Misc_Herb_07", 2, "Peacebloom", 2 },
-	{ "Interface\\Icons\\INV_Sword_04", 3, "Blade of the Test", 1 },
-	{ "Interface\\Icons\\INV_Helmet_08", 4, "Crown of Shiny Things", 1 },
-	{ "Interface\\Icons\\INV_Staff_13", 5, "Staff of Utter Brilliance", 1 },
+	{ "Interface\\Icons\\INV_Sword_04", 3, "Blade of the Test", 1, nil, 18 },
+	{ "Interface\\Icons\\INV_Helmet_08", 4, "Crown of Shiny Things", 1, nil, 42 },
+	{ "Interface\\Icons\\INV_Staff_13", 5, "Staff of Utter Brilliance", 1, nil, 60 },
 }
 function LF.Test()
 	local wasOn = LF.db.enabled
 	local function one(i)
 		local t = TEST[i]
 		LF.db.enabled = true
-		LF.Add({ key = "test" .. i, icon = t[1], q = t[2], count = t[4], isItem = true,
-			label = function(n) return t[3], n > 1 and ("|cffffffffx" .. n .. "|r") or "" end })
+		local l = LF.Add({ key = "test" .. i, icon = t[1], q = t[2], count = t[4], isItem = true,
+			quest = t[5] ~= nil and LF.db.quest, label = ItemLabel, name = t[3] })
+		if l then
+			l.ilvl = LF.db.ilvl and t[6] or nil
+			if t[5] and LF.db.quest then l.qdone, l.qneed = t[5][1], t[5][2] end
+			Render(l)
+		end
 		if i == 1 then LF.ShowMoney(12345) end
 		LF.db.enabled = wasOn
 	end

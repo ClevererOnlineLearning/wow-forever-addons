@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Loot Flare
-## Notes: Shows what you loot mid-screen with rarity glows, a shine on good drops and a sound per rarity. /lflare
-## Version: 1.0
+## Notes: Shows what you loot mid-screen with rarity glows, shine and sparkles, quest progress, 4 animation styles and a sound per rarity. /lflare
+## Version: 1.1
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## SavedVariables: LootFlareDB

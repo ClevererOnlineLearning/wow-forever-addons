@@ -3,10 +3,10 @@ local LF = LootFlare
 local function db() return LF.db end
 
 ------------------------------------------------------------------------
--- Window
+-- Window (two columns)
 ------------------------------------------------------------------------
 local panel = CreateFrame("Frame", "LootFlareOptionsFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-panel:SetSize(330, 625)
+panel:SetSize(610, 545)
 panel:SetPoint("CENTER", 0, 30)
 panel:SetFrameStrata("DIALOG")
 panel:SetMovable(true)
@@ -37,40 +37,43 @@ local refreshers = {}
 local function RefreshAll() for _, f in ipairs(refreshers) do f() end end
 panel:SetScript("OnShow", RefreshAll)
 
-local y = -46
+local COLW = 280
+local cx, y = 20, -46
+local function Column(x) cx, y = x, -46 end
+
 local function Header(text)
 	local h = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	h:SetPoint("TOPLEFT", 22, y)
+	h:SetPoint("TOPLEFT", cx + 2, y)
 	h:SetText("|cffffd100" .. text .. "|r")
 	y = y - 20
 end
 
-local function Check(label, key, after)
+local function Check(label, get, set)
 	local cb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
 	cb:SetSize(24, 24)
-	cb:SetPoint("TOPLEFT", 20, y)
+	cb:SetPoint("TOPLEFT", cx, y)
 	local t = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	t:SetPoint("LEFT", cb, "RIGHT", 2, 0)
 	t:SetText(label)
-	cb:SetScript("OnClick", function(self)
-		db()[key] = self:GetChecked() and true or false
-		if after then after() end
-	end)
-	refreshers[#refreshers + 1] = function() cb:SetChecked(db()[key]) end
+	cb:SetScript("OnClick", function(self) set(self:GetChecked() and true or false) end)
+	refreshers[#refreshers + 1] = function() cb:SetChecked(get()) end
 	y = y - 24
+end
+local function Opt(label, key, after)
+	Check(label, function() return db()[key] end, function(v) db()[key] = v; if after then after() end end)
 end
 
 -- "Label      [-] value [+]"
 local function Stepper(label, get, change)
 	local t = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	t:SetPoint("TOPLEFT", 26, y - 5)
+	t:SetPoint("TOPLEFT", cx + 6, y - 5)
 	t:SetText(label)
 	local plus = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	plus:SetSize(24, 22); plus:SetPoint("TOPRIGHT", -24, y); plus:SetText("+")
+	plus:SetSize(24, 22); plus:SetPoint("TOPLEFT", cx + COLW - 30, y); plus:SetText("+")
 	local val = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	val:SetPoint("RIGHT", plus, "LEFT", -6, 0); val:SetWidth(90)
+	val:SetPoint("RIGHT", plus, "LEFT", -4, 0); val:SetWidth(84)
 	local minus = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	minus:SetSize(24, 22); minus:SetPoint("RIGHT", val, "LEFT", -6, 0); minus:SetText("-")
+	minus:SetSize(24, 22); minus:SetPoint("RIGHT", val, "LEFT", -4, 0); minus:SetText("-")
 	local function show() val:SetText(get()) end
 	plus:SetScript("OnClick", function() change(1); show() end)
 	minus:SetScript("OnClick", function() change(-1); show() end)
@@ -79,24 +82,43 @@ local function Stepper(label, get, change)
 end
 
 local function Clamp(v, lo, hi) return math.min(hi, math.max(lo, v)) end
-local function Hex(q) local r, g, b = LF.QualityColor(q); return string.format("|cff%02x%02x%02x", r * 255, g * 255, b * 255) end
+local function Hex(r, g, b) return string.format("|cff%02x%02x%02x", r * 255, g * 255, b * 255) end
+local function QHex(q) return Hex(LF.QualityColor(q)) end
 
+------------------------------------------------------------------------
+-- Left column: what to show, how it looks
+------------------------------------------------------------------------
+Column(20)
 Header("Show")
-Check("Loot Flare on", "enabled")
-Check("Items", "items")
+Opt("Loot Flare on", "enabled")
+Opt("Items", "items")
 Stepper("Items from", function()
 	local q = db().minQuality
-	return Hex(q) .. LF.QUALITY_NAMES[q] .. "|r"
+	return QHex(q) .. LF.QUALITY_NAMES[q] .. "|r"
 end, function(d) db().minQuality = Clamp(db().minQuality + d, 0, 5) end)
-Check("Money", "money")
-Check("Currency", "currency")
-Check("Honor", "honor")
-Check("How many you now have, e.g. (23)", "bagCount")
+Opt("Mark quest items, with your progress (3/8)", "quest")
+Opt("Item level on gear", "ilvl")
+Opt("How many you now have, e.g. (23)", "bagCount")
+Opt("Money", "money")
+Opt("Currency", "currency")
+Opt("Honor", "honor")
 
-y = y - 4
+y = y - 6
 Header("Look")
-Check("Glow, shine and sparkles on rare and better", "fancy")
-Check("New lines push older ones upward", "growUp", function() LF.ApplyLook() end)
+local function AnimIndex()
+	for i, a in ipairs(LF.ANIMS) do if a.key == db().anim then return i end end
+	return 1
+end
+Stepper("Animation", function() return LF.ANIMS[AnimIndex()].name end, function(d)
+	local n = #LF.ANIMS
+	local i = AnimIndex() + d
+	if i < 1 then i = n elseif i > n then i = 1 end
+	db().anim = LF.ANIMS[i].key
+	LF.ApplyLook()
+	LF.Test()
+end)
+Opt("Glow, shine and sparkles on rare and better", "fancy")
+Opt("New lines push older ones upward", "growUp", function() LF.ApplyLook() end)
 Stepper("Size", function() return string.format("%.1fx", db().scale) end, function(d)
 	db().scale = math.floor(Clamp(db().scale + d * 0.1, 0.5, 2.5) * 10 + 0.5) / 10
 	LF.ApplyLook()
@@ -108,38 +130,60 @@ Stepper("Most lines at once", function() return tostring(db().maxLines) end, fun
 	db().maxLines = Clamp(db().maxLines + d, 2, 15)
 end)
 
-y = y - 4
-Header("Sounds (click to change, right-click to go back)")
+------------------------------------------------------------------------
+-- Right column: sounds, minimap, tips
+------------------------------------------------------------------------
+Column(318)
+Header("Sounds")
 local function SoundIndex(id)
 	for i, s in ipairs(LF.SOUNDS) do if s.id == id then return i end end
 	return 1
 end
-for q = 2, 5 do
+local function SoundRow(key, label)
 	local name = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	name:SetPoint("TOPLEFT", 26, y - 5)
-	name:SetText(Hex(q) .. LF.QUALITY_NAMES[q] .. "|r")
+	name:SetPoint("TOPLEFT", cx + 6, y - 5)
+	name:SetText(label)
 	local play = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	play:SetSize(48, 22); play:SetPoint("TOPRIGHT", -24, y); play:SetText("Play")
-	play:SetScript("OnClick", function() LF.PlaySoundID(db().sounds[q]) end)
+	play:SetSize(44, 22); play:SetPoint("TOPLEFT", cx + COLW - 50, y); play:SetText("Play")
+	play:SetScript("OnClick", function() LF.PlaySoundID(db().sounds[key]) end)
 	local b = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	b:SetSize(130, 22); b:SetPoint("RIGHT", play, "LEFT", -4, 0)
+	b:SetSize(124, 22); b:SetPoint("RIGHT", play, "LEFT", -4, 0)
 	b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-	local function show() b:SetText(LF.SOUNDS[SoundIndex(db().sounds[q])].name) end
+	local function show() b:SetText(LF.SOUNDS[SoundIndex(db().sounds[key])].name) end
 	b:SetScript("OnClick", function(_, button)
 		local n = #LF.SOUNDS
-		local i = SoundIndex(db().sounds[q]) + (button == "RightButton" and -1 or 1)
+		local i = SoundIndex(db().sounds[key]) + (button == "RightButton" and -1 or 1)
 		if i < 1 then i = n elseif i > n then i = 1 end
-		db().sounds[q] = LF.SOUNDS[i].id
+		db().sounds[key] = LF.SOUNDS[i].id
 		show()
-		LF.PlaySoundID(db().sounds[q])
+		LF.PlaySoundID(db().sounds[key])
 	end)
 	refreshers[#refreshers + 1] = show
 	y = y - 26
 end
+for q = 2, 5 do SoundRow(q, QHex(q) .. LF.QUALITY_NAMES[q] .. "|r") end
+SoundRow("quest", Hex(1, 0.82, 0) .. "Quest item|r")
+local sh = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+sh:SetPoint("TOPLEFT", cx + 6, y - 2)
+sh:SetWidth(COLW - 10)
+sh:SetJustifyH("LEFT")
+sh:SetText("Click a sound to change it, right-click to go back.")
+y = y - 26
+
+Header("Other")
+Check("Show minimap button", function() return not db().minimap.hide end, function(v)
+	db().minimap.hide = not v
+	LF.UpdateMinimapButton()
+end)
+local tips = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+tips:SetPoint("TOPLEFT", cx + 6, y - 6)
+tips:SetWidth(COLW - 10)
+tips:SetJustifyH("LEFT")
+tips:SetText("/lflare test - show sample loot\n/lflare on | off\n/lflare move - drag the text somewhere else\n\nThe same item looted again joins its line (x5) instead of adding a new one.")
 
 -- Bottom buttons
 local move = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-move:SetSize(86, 24)
+move:SetSize(96, 24)
 move:SetPoint("BOTTOMLEFT", 22, 20)
 move:SetScript("OnClick", function()
 	db().locked = not db().locked
@@ -149,18 +193,17 @@ end)
 refreshers[#refreshers + 1] = function() move:SetText(db().locked and "Move" or "Lock") end
 
 local test = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-test:SetSize(86, 24)
+test:SetSize(96, 24)
 test:SetPoint("BOTTOM", 0, 20)
 test:SetText("Test")
 test:SetScript("OnClick", function() LF.Test() end)
 
 local reset = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-reset:SetSize(86, 24)
+reset:SetSize(96, 24)
 reset:SetPoint("BOTTOMRIGHT", -22, 20)
 reset:SetText("Reset pos.")
 reset:SetScript("OnClick", function() LF.ResetPosition() end)
 
-local mmCheckY = y - 4
 function LF.ToggleOptions()
 	if panel:IsShown() then panel:Hide() else panel:Show() end
 end
@@ -205,25 +248,12 @@ function LF.UpdateMinimapButton()
 	if db().minimap.hide then mm:Hide() else PlaceButton(); mm:Show() end
 end
 
--- the minimap-button checkbox sits under the sounds
-do
-	y = mmCheckY
-	local cb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-	cb:SetSize(24, 24)
-	cb:SetPoint("TOPLEFT", 20, y)
-	local t = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	t:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-	t:SetText("Show minimap button")
-	cb:SetScript("OnClick", function(self) db().minimap.hide = not self:GetChecked(); LF.UpdateMinimapButton() end)
-	refreshers[#refreshers + 1] = function() cb:SetChecked(not db().minimap.hide) end
-end
-
 mm:SetScript("OnDragStart", function(self)
 	self:SetScript("OnUpdate", function()
 		local mx, my = Minimap:GetCenter()
-		local cx, cy = GetCursorPosition()
+		local px, py = GetCursorPosition()
 		local s = Minimap:GetEffectiveScale()
-		db().minimap.angle = math.deg(atan2(cy / s - my, cx / s - mx))
+		db().minimap.angle = math.deg(atan2(py / s - my, px / s - mx))
 		PlaceButton()
 	end)
 end)
