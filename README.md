@@ -9,7 +9,8 @@ If you share, copy or build on these, please credit **good mens**. The MIT licen
 |---|---|---|
 | TargetFinder | One key finds a mob by name, optionally casts a spell, marks it; map dots for spawns; Tag mode | `/tfinder` |
 | UIFade | Fades the parts of the interface you tick (bars, unit frames, chat, minimap…), 20–100%, minimap button | `/uifade` |
-| ThreatTint | Colours nameplates by threat (pet = blue, colour steps and a threat % on each plate; settings + colour legend) | `/tint` |
+| ThreatTint | Colours nameplates by threat (pet = blue, turning yellow/orange as you near pulling it off your pet; colour steps and a threat % on each plate; settings + colour legend) | `/tint` |
+| Loot Flare | Loot shown mid-screen with rarity glows, shine and sparkles on good drops, and a sound per rarity | `/lflare` |
 | PetWarn | "Pet not attacking" warning in fights | `/petwarn` |
 | GunSilencer | Replaces gun sounds | `/gunsilencer` |
 | SLoTe | Scrolling loot text, Forever port (see credits) | `/slote` |

@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: ThreatTint
 ## Notes: Colours enemy nameplates by threat: who is the mob attacking? Detects if you are tanking. /tint
-## Version: 1.8
+## Version: 1.9
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## SavedVariablesPerCharacter: ThreatTintDB

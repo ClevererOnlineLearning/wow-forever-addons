@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: Loot Flare
+## Notes: Shows what you loot mid-screen with rarity glows, a shine on good drops and a sound per rarity. /lflare
+## Version: 1.0
+## Author: good mens (Mephz on WoW Forever)
+## X-License: MIT (keep the credit when sharing)
+## SavedVariables: LootFlareDB
+## IconTexture: Interface\Icons\INV_Misc_Gem_Pearl_04
+LootFlare.lua
+Options.lua

@@ -30,7 +30,7 @@ TT.LEGEND = {
 		{ "loose", "Fighting your group, not on your threat list yet" } },
 	dps = { { "you", "Attacking you" }, { "losing", "On you, someone is about to take it" },
 		{ "other", "Safe: on someone else (under 50%)" }, { "gaining", "Careful: 50-80% of the threat to pull it" },
-		{ "close", "About to pull it (80%+)" }, { "pet", "On your pet" } },
+		{ "close", "About to pull it (80%+)" }, { "pet", "On your pet (goes yellow/orange as you near pulling it)" } },
 }
 
 -- Your colour for a state (your own pick from the window, or the default).
@@ -244,13 +244,15 @@ function TT.Update(unit)
 	local role = TT.IsTank() and "tank" or "dps"
 	local state = db and db.enabled and TT.State(unit)
 	-- The % matters whenever the mob is on someone else, including your pet (are you about to
-	-- pull it off your pet?). The bar stays blue for your pet; the number shows the step colour.
+	-- pull it off your pet?). On your pet the bar stays blue while you're safe; as DPS it turns
+	-- yellow at 50% and orange at 80%, so pulling it off your pet never comes as a surprise.
+	-- (Tanks keep blue: taking a mob from your own pet is fine for a tank.)
 	local pct = (state == "other" or state == "gaining" or state == "pet") and TT.Percent(unit) or nil
 	local numColor
 	if pct and db.shade then
 		local band = TT.Band(role, pct)
 		numColor = TT.Color(role, band)
-		if state ~= "pet" then state = band end
+		if state ~= "pet" or (role == "dps" and band ~= "other") then state = band end
 	end
 	local c = state and TT.COLORS[role][state] and TT.Color(role, state)
 	TT.SetNumber(bar, c and db.number and pct, numColor or c)
