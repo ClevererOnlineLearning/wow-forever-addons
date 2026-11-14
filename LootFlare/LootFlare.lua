@@ -18,12 +18,12 @@ local DEFAULTS = {
 	quest = true, ilvl = true, upgrade = true,
 	vendor = "grey", -- sell value: "off", "grey" (junk only) or "all"
 	banner = true, bannerMin = 3, edgeGlow = true,
-	gph = false, gphLoginReset = true, gphPos = { x = 0, y = -260 },
+	gph = false, gphLoginReset = true, -- gphPos: nil = just above the action bars
 	session = { secs = 0, money = 0, items = 0 },
 	bagCount = true, fancy = true, growUp = true,
 	anim = "stack",
 	scale = 1.0, duration = 4, maxLines = 8,
-	sounds = { [2] = 0, [3] = 878, [4] = 888, [5] = 8959, quest = 0 },
+	sounds = { [2] = 0, [3] = "sparkle", [4] = "fanfare", [5] = "legendary_swell", quest = "quest" },
 	pos = { x = 0, y = 140 },
 	locked = true,
 	minimap = { hide = false, angle = 200 },
@@ -40,10 +40,17 @@ local function Fill(dst, src)
 	end
 end
 
--- Built-in game sounds (sound kit IDs), picked per rarity in the settings window.
+-- Sounds picked per rarity in the settings window. Text ids are Loot Flare's own sounds
+-- (made from scratch, in the sounds folder); numbers are the game's built-in sound kits.
 LF.SOUNDS = {
 	{ id = 0, name = "No sound" },
-	{ id = 120, name = "Coins" },
+	{ id = "chime", name = "Chime" },
+	{ id = "sparkle", name = "Sparkle" },
+	{ id = "fanfare", name = "Fanfare" },
+	{ id = "legendary_swell", name = "Legendary swell" },
+	{ id = "quest", name = "Quest pling" },
+	{ id = "coins", name = "Coin clink" },
+	{ id = 120, name = "Coins (game)" },
 	{ id = 878, name = "Quest complete" },
 	{ id = 888, name = "Level up" },
 	{ id = 8959, name = "Raid warning" },
@@ -295,10 +302,16 @@ local function PlayFor(key)
 	local now = GetTime()
 	if lastSound[key] and now - lastSound[key] < 0.3 then return true end
 	lastSound[key] = now
-	pcall(PlaySound, id, "Master")
+	LF.PlaySoundID(id)
 	return true
 end
-LF.PlaySoundID = function(id) if id and id ~= 0 then pcall(PlaySound, id, "Master") end end
+function LF.PlaySoundID(id)
+	if type(id) == "string" then
+		pcall(PlaySoundFile, "Interface\\AddOns\\LootFlare\\sounds\\" .. id .. ".ogg", "Master")
+	elseif id and id ~= 0 then
+		pcall(PlaySound, id, "Master")
+	end
+end
 
 -- Turns a line into a quest line: gold name, "!" badge, gold glow with one shine.
 local function QuestStyle(l)
@@ -627,6 +640,19 @@ local lastMoney, busy = nil, {}
 
 local function Init()
 	LootFlareDB = LootFlareDB or {}
+	local s = LootFlareDB.sounds
+	-- Settings saved by 1.0-1.2 still on the old game-sound defaults move to Loot Flare's own
+	-- sounds; anything you picked yourself is kept.
+	if type(s) == "table" and not LootFlareDB.soundsV2 and s[2] == 0 and s[3] == 878 and s[4] == 888
+		and s[5] == 8959 and (s.quest == nil or s.quest == 0) then
+		LootFlareDB.sounds = nil
+	end
+	LootFlareDB.soundsV2 = true
+	-- the spoken-word sounds were removed: anything set to one gets the matching effect
+	local VOICE = { voice_rare = "sparkle", voice_epic = "fanfare", voice_legendary = "legendary_swell", voice_quest = "quest" }
+	if type(LootFlareDB.sounds) == "table" then
+		for k, v in pairs(LootFlareDB.sounds) do if VOICE[v] then LootFlareDB.sounds[k] = VOICE[v] end end
+	end
 	Fill(LootFlareDB, DEFAULTS)
 	LF.db = LootFlareDB
 end
@@ -737,7 +763,11 @@ SlashCmdList.LOOTFLARE = function(msg)
 	elseif msg == "off" then db.enabled = false; Say("off.")
 	elseif msg == "move" or msg == "lock" then db.locked = not db.locked; LF.ApplyLook(); Say(db.locked and "locked." or "drag the blue box, then /lflare lock.")
 	elseif msg == "reset" then LF.ResetPosition(); Say("position reset.")
-	elseif msg == "help" then Say("/lflare (settings), test, on, off, move, reset")
+	elseif msg == "gold" or msg == "gph" then
+		db.gph = not db.gph
+		if LF.ApplyGold then LF.ApplyGold() end
+		Say(db.gph and "gold-per-hour box shown (drag it to move, right-click to start over)." or "gold-per-hour box hidden.")
+	elseif msg == "help" then Say("/lflare (settings), test, on, off, move, reset, gold")
 	elseif LF.ToggleOptions then LF.ToggleOptions()
 	else Say("/lflare test, on, off, move, reset") end
 end

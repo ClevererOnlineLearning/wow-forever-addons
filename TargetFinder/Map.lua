@@ -7,7 +7,8 @@ local TF = TargetFinder
 
 local MAX_WORLD = 600   -- pins on the world map (only the shown map's pins are drawn)
 local MAX_MINI = 150    -- pins on the minimap (only your current zone's)
-local COLOR = { 1, 0.15, 0.85 } -- bright pink: not used by Questie's own icons
+local COLORS = { { 1, 0.15, 0.85 }, { 0.2, 0.65, 1 } } -- first target pink, second blue: not used by Questie's own icons
+TF.PIN_COLORS = COLORS
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local REF = "TargetFinderPins"
 
@@ -22,13 +23,12 @@ end
 -- Pin frames (pooled; one pool per map, since a frame can only be on one)
 ------------------------------------------------------------------------
 local pools = { world = {}, mini = {} }
-local pinName = ""
 
 local function PinEnter(self)
 	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 	GameTooltip:AddLine("Target Finder", 0.2, 0.8, 1)
-	GameTooltip:AddLine(pinName .. " can spawn here.", 1, 1, 1)
-	GameTooltip:AddLine("This is the mob you're looking for.", 0.7, 0.7, 0.7)
+	GameTooltip:AddLine((self.mobName or "?") .. " can spawn here.", 1, 1, 1)
+	GameTooltip:AddLine(self.second and "This is your second target." or "This is the mob you're looking for.", 0.7, 0.7, 0.7)
 	GameTooltip:Show()
 end
 
@@ -43,7 +43,7 @@ local function NewPin(size)
 	dot:SetTexture(CIRCLE)
 	dot:SetPoint("TOPLEFT", 2, -2)
 	dot:SetPoint("BOTTOMRIGHT", -2, 2)
-	dot:SetVertexColor(COLOR[1], COLOR[2], COLOR[3], 1)
+	p.dot = dot
 	p:EnableMouse(true)
 	p:SetScript("OnEnter", PinEnter)
 	p:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -51,10 +51,13 @@ local function NewPin(size)
 	return p
 end
 
-local function GetPin(kind, i)
+local function GetPin(kind, i, name, which)
 	local pool = pools[kind]
 	pool[i] = pool[i] or NewPin(kind == "world" and 12 or 10)
-	return pool[i]
+	local p, c = pool[i], COLORS[which] or COLORS[1]
+	p.mobName, p.second = name, which == 2
+	p.dot:SetVertexColor(c[1], c[2], c[3], 1)
+	return p
 end
 
 local function ClearPins()
@@ -140,7 +143,7 @@ function TF.GetSpawns(name)
 	local out = {}
 	local want = TF.Clean(name):lower()
 	local ids = nameIndex[want] or {}
-	if TargetFinderDB and TargetFinderDB.exact == false then -- "Match part of the name": every name containing it
+	if TargetFinderDB and not TF.IsExact(name) then -- typed with "Match part of the name": every name containing it
 		ids = {}
 		for k, list in pairs(nameIndex) do
 			if k:find(want, 1, true) then for _, n in ipairs(list) do ids[#ids + 1] = n end end
@@ -176,25 +179,28 @@ end
 function TF.UpdatePins(force)
 	local db = TargetFinderDB
 	if not db then return end
-	local name = TF.Clean(db.mob)
+	local names = TF.Names()
 	local world, mini = db.mapPins and true or false, db.miniPins and true or false
-	local on = (world or mini) and name ~= ""
+	local on = (world or mini) and #names > 0
 	local here = PlayerMap()
-	local key = on and table.concat({ name:lower(), tostring(here), tostring(world), tostring(mini), tostring(db.exact) }, "|") or "off"
+	local key = on and table.concat({ table.concat(names, "+"):lower(), tostring(here), tostring(world), tostring(mini), tostring(db.exact), tostring(db.mobPicked), tostring(db.mob2Picked) }, "|") or "off"
 	if key == drawnKey and not force then return end
 	ClearPins()
 	drawnKey, TF.pinCount, TF.pinNote = key, 0, nil
 	if not on then return end
 	local P = Pins()
 	if not P then TF.pinNote = "map library missing"; drawnKey = nil; return end -- retry next time
-	local spawns, why = TF.GetSpawns(name)
-	if not spawns then TF.pinNote = why; drawnKey = nil; return end -- retry next time
-	pinName = name
+	local spawns = {}
+	for i, name in ipairs(names) do
+		local list, err = TF.GetSpawns(name)
+		if not list then TF.pinNote = err; drawnKey = nil; return end -- retry next time
+		for _, s in ipairs(list) do s.name, s.which = name, i; spawns[#spawns + 1] = s end
+	end
 	local w, m = 0, 0
 	for _, s in ipairs(spawns) do
 		if world and w < MAX_WORLD then
 			w = w + 1
-			pcall(P.AddWorldMapIconMap, P, REF, GetPin("world", w), s.map, s.x, s.y, HBD_PINS_WORLDMAP_SHOW_PARENT)
+			pcall(P.AddWorldMapIconMap, P, REF, GetPin("world", w, s.name, s.which), s.map, s.x, s.y, HBD_PINS_WORLDMAP_SHOW_PARENT)
 		end
 	end
 	-- Minimap: your zone's spawns first, then others nearby (the minimap only shows pins in range).
@@ -202,7 +208,7 @@ function TF.UpdatePins(force)
 		for _, s in ipairs(spawns) do
 			if mini and m < MAX_MINI and ((pass == 1) == (s.map == here)) then
 				m = m + 1
-				pcall(P.AddMinimapIconMap, P, REF, GetPin("mini", m), s.map, s.x, s.y, false, false)
+				pcall(P.AddMinimapIconMap, P, REF, GetPin("mini", m, s.name, s.which), s.map, s.x, s.y, false, false)
 			end
 		end
 	end

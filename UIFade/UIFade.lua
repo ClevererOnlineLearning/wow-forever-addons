@@ -2,6 +2,8 @@
 -- frames (by name); "Everything else" covers the other windows on screen (UIParent's children).
 -- Only SetAlpha is used: nothing is moved, hidden or reparented, so it is safe in a fight.
 -- The 3D world and nameplates are not part of the interface and are never faded.
+local _, ns = ...
+local S = ns.Skin
 local MIN, MAX = 20, 100 -- never below 20%
 
 UIFadeDB = UIFadeDB or {}
@@ -105,6 +107,7 @@ end
 
 local function Usable(f)
 	return type(f) == "table" and type(f.GetObjectType) == "function" and not own[f]
+		and not rawget(f, "goodmensUI") -- settings windows of good mens' add-ons stay readable
 		and not (f.IsForbidden and f:IsForbidden()) and type(f.SetAlpha) == "function"
 end
 
@@ -196,93 +199,57 @@ local function SetLevel(v)
 end
 
 -- Settings window -------------------------------------------------------------------------
-frame = CreateFrame("Frame", "UIFadeFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+local GetMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+local W = 384
+local CW = W - 24
+frame = S.Window("UIFadeFrame", "UI Fade", "Interface\\Icons\\Spell_Holy_MindVision", GetMeta and GetMeta("UIFade", "Version"), W, 420)
 own[frame] = true
-frame:SetSize(340, 316)
-frame:SetPoint("CENTER")
-frame:SetFrameStrata("DIALOG")
-frame:SetMovable(true); frame:EnableMouse(true); frame:SetClampedToScreen(true)
-frame:RegisterForDrag("LeftButton")
-frame:SetScript("OnDragStart", frame.StartMoving)
-frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-if frame.SetBackdrop then
-	frame:SetBackdrop({
-		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-		tile = true, tileSize = 32, edgeSize = 32,
-		insets = { left = 11, right = 12, top = 12, bottom = 11 },
-	})
-end
-frame:Hide()
-tinsert(UISpecialFrames, "UIFadeFrame") -- Escape closes it
+local more = S.MoreButton(frame.head, "UIFade", frame)
+more:SetPoint("RIGHT", frame.close, "LEFT", -8, 0)
 
-local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-title:SetPoint("TOP", 0, -18); title:SetText("UI Fade")
-CreateFrame("Button", nil, frame, "UIPanelCloseButton"):SetPoint("TOPRIGHT", -6, -6)
+-- How see-through
+local c1 = S.Card(frame, "How visible", 12, -44, CW)
+local big = c1:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+big:SetPoint("TOPRIGHT", -14, -8)
+local state = S.Note(c1, "", 14, -30, CW - 28)
+local slider = S.Slider(c1, CW - 28, MIN, MAX, 5, "UIFadeSlider")
+slider:SetPoint("TOPLEFT", 14, -54)
+local lo = c1:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"); lo:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", 0, -4); lo:SetText(MIN .. "%")
+local hi = c1:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"); hi:SetPoint("TOPRIGHT", slider, "BOTTOMRIGHT", 0, -4); hi:SetText(MAX .. "%")
+local toggle = S.Button(c1, "", CW - 28, 26, true)
+toggle:SetPoint("TOPLEFT", 14, -96)
+c1:SetHeight(134)
 
-local label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-label:SetPoint("TOP", 0, -46)
-
-local slider = CreateFrame("Slider", "UIFadeSlider", frame, BackdropTemplateMixin and "BackdropTemplate" or nil)
-slider:SetOrientation("HORIZONTAL")
-slider:SetSize(250, 17)
-slider:SetPoint("TOP", 0, -66)
-slider:SetHitRectInsets(0, 0, -10, -10)
-if slider.SetBackdrop then
-	slider:SetBackdrop({
-		bgFile = "Interface\\Buttons\\UI-SliderBar-Background",
-		edgeFile = "Interface\\Buttons\\UI-SliderBar-Border",
-		tile = true, tileSize = 8, edgeSize = 8,
-		insets = { left = 3, right = 3, top = 6, bottom = 6 },
-	})
-end
-slider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
-slider:SetMinMaxValues(MIN, MAX)
-slider:SetValueStep(5)
-if slider.SetObeyStepDuringDrag then slider:SetObeyStepDuringDrag(true) end
-local lo = slider:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"); lo:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", 0, -2); lo:SetText(MIN .. "%")
-local hi = slider:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"); hi:SetPoint("TOPRIGHT", slider, "BOTTOMRIGHT", 0, -2); hi:SetText(MAX .. "%")
-
-local what = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-what:SetPoint("TOPLEFT", 22, -104); what:SetText("What to fade:")
-
+-- What to fade (two columns)
+local c2 = S.Card(frame, "What to fade", 12, S.Below(c1), CW)
 local checks = {}
+local COLX = { 14, CW / 2 + 4 }
 for i, g in ipairs(GROUPS) do
 	local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
-	local c = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-	c:SetSize(24, 24); c:SetPoint("TOPLEFT", 18 + col * 165, -122 - row * 26)
-	local t = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	t:SetPoint("LEFT", c, "RIGHT", 2, 0); t:SetText(g.label)
-	c.label = t
+	local c = S.Check(c2, g.label, COLX[col + 1], -34 - row * 26)
 	c:SetScript("OnClick", function(self)
 		db.groups[g.key] = self:GetChecked() and true or false
 		Update()
 	end)
-	c:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:AddLine(g.label)
-		GameTooltip:AddLine(g.tip, 1, 1, 1, true); GameTooltip:Show()
-	end)
-	c:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	S.Tip(c, g.label, g.tip)
 	checks[g.key] = c
 end
+c2:SetHeight(34 + math.ceil(#GROUPS / 2) * 26 + 8)
 
 -- "Choose..." next to Action bars: a small list with one tick box per bar this client has.
-local barsWin = CreateFrame("Frame", "UIFadeBarsFrame", frame, BackdropTemplateMixin and "BackdropTemplate" or nil)
-barsWin:SetPoint("TOPLEFT", frame, "TOPRIGHT", -4, 0)
+local barsWin = CreateFrame("Frame", "UIFadeBarsFrame", frame)
+barsWin:SetPoint("TOPLEFT", frame, "TOPRIGHT", 6, 0)
 barsWin:SetFrameStrata("DIALOG")
 barsWin:EnableMouse(true)
-if barsWin.SetBackdrop then
-	barsWin:SetBackdrop({
-		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-		tile = true, tileSize = 32, edgeSize = 32,
-		insets = { left = 11, right = 12, top = 12, bottom = 11 },
-	})
+S.Panel(barsWin)
+do
+	local top = barsWin:CreateTexture(nil, "ARTWORK")
+	top:SetPoint("TOPLEFT", 1, -1); top:SetPoint("TOPRIGHT", -1, -1); top:SetHeight(2)
+	top:SetColorTexture(S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.9)
 end
 barsWin:Hide()
 local barsTitle = barsWin:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-barsTitle:SetPoint("TOP", 0, -18); barsTitle:SetText("Which action bars fade")
-CreateFrame("Button", nil, barsWin, "UIPanelCloseButton"):SetPoint("TOPRIGHT", -6, -6)
+barsTitle:SetPoint("TOPLEFT", 14, -12); barsTitle:SetText("Which action bars fade")
 local barChecks = {}
 local BARS = GROUPS[1].subs
 
@@ -292,60 +259,56 @@ local function BarExists(b)
 end
 
 function barsWin.Update()
-	local y = -42
+	local y = -38
 	for _, b in ipairs(BARS) do
 		local c = barChecks[b.key]
 		if not c then
-			c = CreateFrame("CheckButton", nil, barsWin, "UICheckButtonTemplate")
-			c:SetSize(24, 24)
-			local t = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-			t:SetPoint("LEFT", c, "RIGHT", 2, 0); t:SetText(b.label)
-			c.label = t
+			c = S.Check(barsWin, b.label)
 			c:SetScript("OnClick", function(self) db.bars[b.key] = self:GetChecked() and true or false; Update() end)
 			barChecks[b.key] = c
 		end
 		if BarExists(b) then -- bars this client doesn't have aren't listed
-			c:ClearAllPoints(); c:SetPoint("TOPLEFT", 18, y); c:Show()
+			c:ClearAllPoints(); c:SetPoint("TOPLEFT", 14, y - 4); c:Show()
 			c:SetChecked(db.bars[b.key] ~= false)
-			y = y - 24
+			y = y - 26
 		else
 			c:Hide()
 		end
 	end
-	barsWin:SetSize(210, -y + 18)
+	barsWin:SetSize(220, -y + 10)
 end
 barsWin:SetScript("OnShow", function() barsWin.Update() end)
 
-local barsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-barsBtn:SetSize(64, 18); barsBtn:SetPoint("LEFT", checks.bars.label, "RIGHT", 6, 0)
-barsBtn:SetText("Choose...")
+-- "Choose bars..." sits in the card's title row, top right, so it never crowds the tick boxes.
+local barsBtn = S.Button(c2, "Choose bars...", 112, 20)
+barsBtn:SetPoint("TOPRIGHT", -12, -8)
 barsBtn:SetScript("OnClick", function() barsWin:SetShown(not barsWin:IsShown()) end)
+S.Tip(barsBtn, "Choose bars", "Pick which action bars fade when \"Action bars\" is ticked.")
 
-local toggle = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-toggle:SetSize(140, 22); toggle:SetPoint("TOP", 0, -260)
+-- Footer: minimap button (its quick controls are in the tick box's tooltip)
+local foot = S.Footer(frame, 38)
+local mmChk = S.Check(foot, "Show minimap button")
+mmChk:SetPoint("LEFT", 14, 0)
+S.Tip(mmChk, "Minimap button", "Left-click: this window. Right-click: fade on/off. Mouse wheel: 5% up or down. Drag: move it.")
 
-local mmChk = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-mmChk:SetSize(24, 24); mmChk:SetPoint("BOTTOMLEFT", 18, 16)
-local mmText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-mmText:SetPoint("LEFT", mmChk, "RIGHT", 2, 0); mmText:SetText("Show minimap button")
+frame:SetHeight(-S.Below(c2) + 38 + 2)
 
 local updating = false
 function frame.Update()
-	updating = true
-	slider:SetValue(db.level)
-	updating = false
-	label:SetText(("Fade to: %d%% visible%s"):format(db.level, db.on and "" or "  (off now)"))
-	toggle:SetText(db.on and "Full brightness" or "Fade")
+	slider:Set(db.level)
+	big:SetText(db.level .. "%")
+	big:SetTextColor(db.on and S.ACCENT[1] or 0.55, db.on and S.ACCENT[2] or 0.55, db.on and S.ACCENT[3] or 0.58)
+	state:SetText(db.on and "Faded now. Drag to change how much you can see." or "Off: everything is at full brightness.")
+	toggle:SetText(db.on and "Back to full brightness" or ("Fade to " .. db.level .. "%"))
 	for k, c in pairs(checks) do c:SetChecked(db.groups[k]) end
 	if barsWin:IsShown() then barsWin.Update() end
 	mmChk:SetChecked(not db.minimap.hide)
 end
 
-slider:SetScript("OnValueChanged", function(_, v)
-	if updating then return end
+slider.onChange = function(v)
 	db.level = Clamp(v); db.on = true -- moving the slider shows the result straight away
 	Update(); frame.Update()
-end)
+end
 toggle:SetScript("OnClick", function() UIFade_Toggle() end)
 frame:SetScript("OnShow", function() frame.Update() end)
 
@@ -382,6 +345,7 @@ end
 local function UpdateButton()
 	if db.minimap.hide then mm:Hide() else PlaceButton(); mm:Show() end
 end
+S.Group(mm, "UIFade", function() return db and db.minimap end, UpdateButton) -- the shared minimap bag
 
 local function Tooltip(self)
 	GameTooltip:SetOwner(self, "ANCHOR_LEFT")

@@ -1,0 +1,29 @@
+## Interface: 16001
+## Title: Fastest Way To
+## Notes: Tells you the fastest way to get somewhere: which flights, boats, zeppelins and zones to run through, with real walking paths. /fw
+## Version: 0.3.2
+## Author: good mens (Mephz on WoW Forever)
+## X-License: GPL-3.0-or-later. Walking router and maps from Shortest Path Forever by Cillian Berragan (see CREDITS.md)
+## OptionalDeps: Questie, QuestieDB
+## SavedVariables: FastestWayDB
+## SavedVariablesPerCharacter: FastestWayCharDB
+## IconTexture: Interface\Icons\INV_Misc_Map_01
+Libs\LibStub.lua
+Libs\CallbackHandler-1.0.lua
+Libs\HereBeDragons-2.0.lua
+Libs\HereBeDragons-Pins-2.0.lua
+Skin.lua
+Data.lua
+# Walking engine (GPL-3.0-or-later, Shortest Path Forever by Cillian Berragan): maps, road data, router
+Engine\Nav\Nav.xml
+Engine\Data\RoadCells.lua
+Engine\Data\RoadEdges.lua
+Engine\Data\Boats.lua
+Engine\Routing\PathGrid.lua
+Engine\Routing\Path.lua
+Engine\Routing\PathJobs.lua
+Route.lua
+Walk.lua
+UI.lua
+Quests.lua
+Arrow.lua

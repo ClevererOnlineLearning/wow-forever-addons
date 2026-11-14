@@ -38,13 +38,34 @@ local function IsUnitToken(s)
 		or s:find("target$") ~= nil or s:find("^nameplate") ~= nil
 end
 
+-- The names being looked for: the first box, then the optional second one (no repeats).
+function TF.Names()
+	local db = TargetFinderDB
+	local out, seen = {}, {}
+	for _, n in ipairs({ Clean(db.mob), Clean(db.mob2) }) do
+		if n ~= "" and not seen[n:lower()] then seen[n:lower()] = true; out[#out + 1] = n end
+	end
+	return out
+end
+
+-- Whether a name is searched exactly. "Match part of the name" off: always. On: only names you
+-- typed match part; a name picked from a list (suggestions, Nearby, Quests, Saved) is exact,
+-- because you chose that very mob. Each box remembers how its name got there.
+function TF.IsExact(name)
+	local db = TargetFinderDB
+	if db.exact then return true end
+	local n = Clean(name):lower()
+	if db.mobPicked and Clean(db.mob):lower() == n then return true end
+	if db.mob2Picked and Clean(db.mob2):lower() == n then return true end
+	return false
+end
+
 -- The target is always cleared before searching, so a failed search can never leave
 -- anyone (an unrelated mob, a friend, or you) selected for the spell.
-function TF.BuildBody()
+-- With two names, the second is the fallback when the first isn't around.
+local function Build(names)
 	local db = TargetFinderDB
-	local mob, spell = Clean(db.mob), Clean(db.spell)
-	if mob == "" then return nil, "Enter a mob name first." end
-	if IsUnitToken(mob) then return nil, ("'%s' is a unit keyword, not a mob name."):format(mob) end
+	local spell = Clean(db.spell)
 	local useSpell = spell ~= "" -- empty spell box = just target it
 
 	-- Enemies and friendly NPCs alike: the spell works on any living unit the search found.
@@ -53,14 +74,15 @@ function TF.BuildBody()
 	-- Name targeting always picks the closest match, so Tag mode moves on with Tab instead: while
 	-- you're on a living enemy, the press jumps to the next enemy (any name); with no target it
 	-- searches by name as usual.
-	local find = (db.exact and "/targetexact " or "/target ") -- /target also matches longer names ("Zanzil")
+	local function find(n) return TF.IsExact(n) and "/targetexact " or "/target " end -- /target also matches longer names ("Zanzil")
 	if db.tagMode then
 		L[#L + 1] = "/cleartarget [noharm][dead]"
 		L[#L + 1] = "/targetenemy [harm,nodead]"
-		L[#L + 1] = find .. "[noexists] " .. mob
+		for _, n in ipairs(names) do L[#L + 1] = find(n) .. "[noexists] " .. n end
 	else
 		L[#L + 1] = "/cleartarget"
-		L[#L + 1] = find .. mob
+		L[#L + 1] = find(names[1]) .. names[1]
+		if names[2] then L[#L + 1] = find(names[2]) .. "[noexists][dead] " .. names[2] end
 	end
 	if useSpell then
 		-- Explicit @target: never falls back to a soft/auto target when nothing was found.
@@ -80,6 +102,26 @@ function TF.BuildBody()
 	return body
 end
 
+-- Returns body1, body2 (body2 only with two names: the same search, second name first), or nil, error.
+function TF.BuildBodies()
+	local names = TF.Names()
+	if #names == 0 then return nil, nil, "Enter a mob name first." end
+	for _, n in ipairs(names) do
+		if IsUnitToken(n) then return nil, nil, ("'%s' is a unit keyword, not a mob name."):format(n) end
+	end
+	local b1, err = Build(names)
+	if not b1 then return nil, nil, err end
+	if not names[2] then return b1 end
+	local b2, err2 = Build({ names[2], names[1] })
+	if not b2 then return nil, nil, err2 end
+	return b1, b2
+end
+
+function TF.BuildBody()
+	local b1, _, err = TF.BuildBodies()
+	return b1, err
+end
+
 ------------------------------------------------------------------------
 -- Secure button (the only thing that ever targets or casts; runs only on your key press)
 ------------------------------------------------------------------------
@@ -87,6 +129,23 @@ local button = CreateFrame("Button", TF.BUTTON_NAME, UIParent, "SecureActionButt
 button:SetSize(1, 1)
 button:RegisterForClicks("AnyUp", "AnyDown") -- the template honours the ActionButtonUseKeyDown CVar
 button:SetAttribute("type", "macro")
+
+-- Two names: each press swaps which one is searched first. This runs in the game's secure
+-- handler (allowed in combat), only on the press phase that acts, and only reads attributes
+-- the addon set out of combat. With one name it does nothing.
+local SWAP = [[
+	local b2 = self:GetAttribute("tf-body2")
+	if not b2 then return end
+	if down ~= nil and (down and true or false) ~= (self:GetAttribute("tf-keydown") and true or false) then return end
+	local n = 3 - (self:GetAttribute("tf-turn") or 2)
+	self:SetAttribute("tf-turn", n)
+	self:SetAttribute("macrotext", n == 2 and b2 or self:GetAttribute("tf-body1"))
+]]
+TF.canCycle = false
+if SecureHandlerWrapScript then
+	local header = CreateFrame("Frame", nil, UIParent, "SecureHandlerBaseTemplate")
+	TF.canCycle = pcall(SecureHandlerWrapScript, button, "OnClick", header, SWAP) and true or false
+end
 
 -- Optional "found it" sound. Macros can't play sounds, so the addon looks at your target just
 -- before and just after the key's secure action (Pre/PostClick, only on your press). It plays
@@ -144,23 +203,24 @@ local function TaggedByOther()
 end
 TF.TaggedByOther = TaggedByOther
 
-local hadHostile, soundWarned, lastTagWarn = nil, false, -100
+-- The target's name, or nil when there's none or the game hides it.
+local function TargetName()
+	local ok, n = pcall(UnitName, "target")
+	if ok and type(n) == "string" and not IsSecret(n) then return n end
+end
+
+local hadHostile, hadName, soundWarned = nil, nil, false
 button:SetScript("PreClick", function(_, _, down)
-	hadHostile = nil
-	if TargetFinderDB and TargetFinderDB.sound and ActingPhase(down) then hadHostile = HostileTarget() end
+	hadHostile, hadName = nil, nil
+	if TargetFinderDB and TargetFinderDB.sound and ActingPhase(down) then
+		hadHostile = HostileTarget()
+		hadName = hadHostile and TargetName()
+	end
 end)
 button:SetScript("PostClick", function(_, _, down)
 	if not (TargetFinderDB and ActingPhase(down)) then return end
 	local now = HostileTarget()
-	if now and TaggedByOther() then
-		local t = GetTime and GetTime() or 0
-		if t - lastTagWarn >= 5 then -- at most once every 5 seconds, so key spam doesn't flood chat
-			lastTagWarn = t
-			TF.Print(("Found %s, but someone else has tagged it (it's grey). Press again to look for another one.")
-				:format(Clean(TargetFinderDB.mob) ~= "" and Clean(TargetFinderDB.mob) or "it"))
-		end
-		return -- no "found it" sound for a mob you can't claim
-	end
+	if now and TaggedByOther() then return end -- no "found it" sound for a mob you can't claim
 	if not TargetFinderDB.sound then return end
 	if now == nil or hadHostile == nil then
 		if not soundWarned then
@@ -169,7 +229,12 @@ button:SetScript("PostClick", function(_, _, down)
 		end
 		return
 	end
-	if now and not hadHostile then TF.PlayFoundSound() end
+	if now and not hadHostile then TF.PlayFoundSound() return end
+	-- Two names: switching from one to the other counts as finding it.
+	if now and hadName and Clean(TargetFinderDB.mob2) ~= "" then
+		local name = TargetName()
+		if name and name ~= hadName then TF.PlayFoundSound() end
+	end
 end)
 
 local pending = false
@@ -186,7 +251,11 @@ function TF.Apply()
 		return false, TF.state
 	end
 	pending = false
-	local body, err = TF.BuildBody()
+	local body, body2, err = TF.BuildBodies()
+	button:SetAttribute("tf-body1", body)
+	button:SetAttribute("tf-body2", body2) -- nil with one name: the swap snippet does nothing
+	button:SetAttribute("tf-turn", nil)
+	button:SetAttribute("tf-keydown", GetCVarBool and GetCVarBool("ActionButtonUseKeyDown") and true or false)
 	button:SetAttribute("macrotext", body) -- nil body => the key does nothing
 	TF.appliedBody = body
 	TF.state = body and "Ready." or ("Key disabled: " .. err)
@@ -209,25 +278,41 @@ end
 -- The one way a picked or typed name becomes the active search (Quick Target, Nearby, Quests,
 -- Saved). Spell and matching settings are untouched. Invalid names change nothing.
 -- Returns ok, message; the message says whether the Find key already uses it or it is queued.
-function TF.Track(name)
+-- second = true puts the name in the second box instead (the first stays as it is).
+-- picked = the name was chosen from a list (always searched exactly), not typed.
+function TF.Track(name, second, picked)
 	name = Clean(name)
 	local db = TargetFinderDB
-	local old = db.mob
-	db.mob = name
+	local field = second and "mob2" or "mob"
+	if name == "" and second then return false, "Type a name for the second target." end
+	local old, oldPicked = db[field], db[field .. "Picked"]
+	db[field], db[field .. "Picked"] = name, picked and true or false
 	local body, err = TF.BuildBody()
-	if not body then db.mob = old; return false, err end
+	if not body then db[field], db[field .. "Picked"] = old, oldPicked; return false, err end
 	local active = TF.Apply()
 	TF.AddRecent(name)
 	if TF.Refresh then TF.Refresh() end
-	if active then return true, "Now tracking |cffffffff" .. name .. "|r" end
-	return true, "Queued, applies when combat ends: |cffffffff" .. name .. "|r (the key still searches for the previous name)"
+	local what = (second and "Second target: " or "Now tracking ") .. "|cffffffff" .. name .. "|r"
+	if active then return true, what end
+	return true, "Queued, applies when combat ends: " .. what .. " (the key still does the previous search)"
+end
+
+-- Empties the second box only.
+function TF.ClearSecond()
+	local db = TargetFinderDB
+	if Clean(db.mob2) == "" then return true, "No second target." end
+	db.mob2, db.mob2Picked = "", false
+	TF.Apply()
+	if TF.UpdatePins then TF.UpdatePins() end
+	if TF.Refresh then TF.Refresh() end
+	return true, "Second target cleared."
 end
 
 -- Stops looking for anything: the Find key does nothing and the map dots go away.
 function TF.ClearMob()
 	local db = TargetFinderDB
-	if Clean(db.mob) == "" then return true, "Not looking for anything." end
-	db.mob = ""
+	if #TF.Names() == 0 then return true, "Not looking for anything." end
+	db.mob, db.mob2, db.mobPicked, db.mob2Picked = "", "", false, false
 	local inFight = InCombatLockdown()
 	TF.Apply()
 	if TF.UpdatePins then TF.UpdatePins() end
@@ -534,12 +619,15 @@ BINDING_NAME_TARGETFINDER_OPEN_SEARCH = "Open search box (type a mob name)"
 -- Init / events
 ------------------------------------------------------------------------
 events:RegisterEvent("PLAYER_LOGIN")
+events:RegisterEvent("CVAR_UPDATE")
 events:SetScript("OnEvent", function(self, event)
 	if event == "PLAYER_LOGIN" then
 		self:UnregisterEvent("PLAYER_LOGIN")
 		local db = type(TargetFinderDB) == "table" and TargetFinderDB or {}
 		TargetFinderDB = db
 		if type(db.mob) ~= "string" then db.mob = "" end
+		if type(db.mob2) ~= "string" then db.mob2 = "" end -- second target, added in 3.8
+		db.mobPicked, db.mob2Picked = db.mobPicked == true, db.mob2Picked == true -- 3.9: picked = exact
 		local wasFriendly = db.friendly -- before 3.1 friendly NPCs and "target myself first" were options
 		db.friendly, db.before = nil, nil
 		if type(db.spell) ~= "string" then db.spell = CLASS_DEFAULT_SPELL[select(2, UnitClass("player"))] or "" end
@@ -570,6 +658,10 @@ events:SetScript("OnEvent", function(self, event)
 		if type(db.minimap) ~= "table" then db.minimap = { angle = 200, hide = false } end
 		TF.Apply()
 		if TF.OnLogin then TF.OnLogin() end
+	elseif event == "CVAR_UPDATE" then -- "cast on key down" changed: the swap must follow it
+		if not InCombatLockdown() then
+			button:SetAttribute("tf-keydown", GetCVarBool and GetCVarBool("ActionButtonUseKeyDown") and true or false)
+		end
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		self:UnregisterEvent("PLAYER_REGEN_ENABLED")
 		if pending then

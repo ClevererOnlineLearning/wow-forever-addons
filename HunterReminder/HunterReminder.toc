@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: Hunter Reminder
+## Notes: Pulsing reminder when Trueshot Aura or Aspect of the Hawk is missing, a warning when Feign Death is resisted, and tracking that matches your target. Minimap button or /hrem for settings.
+## Version: 1.5
+## Author: good mens (Mephz on WoW Forever)
+## X-License: MIT (keep the credit when sharing)
+## SavedVariablesPerCharacter: HunterReminderDB
+Skin.lua
+HunterReminder.lua
+Options.lua

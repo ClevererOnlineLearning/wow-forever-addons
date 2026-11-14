@@ -1,9 +1,10 @@
 ## Interface: 16001
 ## Title: PetWarn
-## Notes: Shows "Pet not attacking" in the middle of your screen when you're in a fight and your pet is idle. /petwarn
-## Version: 1.0
+## Notes: Shows "Pet not attacking" when you're in a fight and your pet is idle, and "Mend Pet!" when its health drops below 60%. /petwarn
+## Version: 1.3
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## SavedVariablesPerCharacter: PetWarnDB
 ## IconTexture: Interface\Icons\Ability_GhoulFrenzy
+Skin.lua
 PetWarn.lua

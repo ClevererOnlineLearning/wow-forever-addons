@@ -1,0 +1,11 @@
+## Interface: 16001
+## Title: RangeTint
+## Notes: Colours your action buttons: red when out of range, orange near the edge, purple when too close, blue when out of mana. /rtint
+## Version: 1.1
+## Author: good mens (Mephz on WoW Forever)
+## X-License: MIT (keep the credit when sharing)
+## SavedVariables: RangeTintDB
+## IconTexture: Interface\Icons\Ability_Marksmanship
+Skin.lua
+RangeTint.lua
+Options.lua

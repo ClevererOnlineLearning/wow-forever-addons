@@ -1,58 +1,34 @@
 -- Target Finder: the settings window (three simple steps), search box, minimap button, slash command.
 -- Settings apply to the Find key as you change them (queued while in a fight).
+local _, ns = ...
+local S = ns.Skin
 local TF = TargetFinder
 
 local GOLD, WHITE, GREY, GREEN, RED, ORANGE = "|cffffd100", "|cffffffff", "|cff9d9d9d", "|cff20ff20", "|cffff4040", "|cffff9933"
 
 ------------------------------------------------------------------------
--- Small building blocks
+-- Small building blocks (flat look from Skin.lua)
 ------------------------------------------------------------------------
-local function Tip(widget, title, text)
-	widget:HookScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:AddLine(title)
-		GameTooltip:AddLine(text, 1, 1, 1, true)
-		GameTooltip:Show()
-	end)
-	widget:HookScript("OnLeave", function() GameTooltip:Hide() end)
-end
+local function Tip(widget, title, text) S.Tip(widget, title, text) end
 
 local function Text(parent, text, x, y, font, width)
-	local l = parent:CreateFontString(nil, "OVERLAY", font or "GameFontNormal")
-	l:SetPoint("TOPLEFT", x, y)
-	l:SetJustifyH("LEFT")
-	if width then l:SetWidth(width) end
-	l:SetText(text)
-	return l
+	return S.Text(parent, text, x, y, font, width)
 end
 
 local function Edit(parent, x, y, w)
-	local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-	e:SetSize(w, 20)
+	local e = S.Edit(parent, w, 24)
 	e:SetPoint("TOPLEFT", x, y)
-	e:SetAutoFocus(false)
-	e:SetMaxLetters(80)
-	e:SetScript("OnEscapePressed", e.ClearFocus)
 	return e
 end
 
-local function Button(parent, text, w, x, y)
-	local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-	b:SetSize(w, 22)
+local function Button(parent, text, w, x, y, primary)
+	local b = S.Button(parent, text, w, 24, primary)
 	b:SetPoint("TOPLEFT", x, y)
-	b:SetText(text)
 	return b
 end
 
 local function Check(parent, text, x, y)
-	local c = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-	c:SetSize(24, 24)
-	c:SetPoint("TOPLEFT", x, y)
-	local t = c:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	t:SetPoint("LEFT", c, "RIGHT", 2, 0)
-	t:SetText(text)
-	c.label = t
-	return c
+	return S.Check(parent, text, x, y)
 end
 
 local function Menu(owner, build)
@@ -72,83 +48,92 @@ local function KeyName(binding)
 end
 
 ------------------------------------------------------------------------
--- Window
+-- Window: three cards (who / keys / when found) and a status box under them
 ------------------------------------------------------------------------
-local W = 360
-local BOTTOM = 444 -- where the last row of settings ends
-local f = CreateFrame("Frame", "TargetFinderFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-f:SetSize(W, BOTTOM + 70)
-f:SetPoint("CENTER")
-f:SetFrameStrata("DIALOG")
-f:SetMovable(true)
-f:EnableMouse(true)
-f:RegisterForDrag("LeftButton")
-f:SetScript("OnDragStart", f.StartMoving)
-f:SetScript("OnDragStop", f.StopMovingOrSizing)
-f:SetClampedToScreen(true)
-if f.SetBackdrop then
-	f:SetBackdrop({
-		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-		tile = true, tileSize = 32, edgeSize = 32,
-		insets = { left = 11, right = 12, top = 12, bottom = 11 },
-	})
-end
-f:Hide()
-tinsert(UISpecialFrames, "TargetFinderFrame")
+local W = 404
+local CW = W - 24 -- card width
+local L = 14      -- left edge inside a card
+local GetMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+local version = GetMeta and GetMeta("TargetFinder", "Version")
+local f = S.Window("TargetFinderFrame", "Target Finder", "Interface\\Icons\\INV_Misc_Spyglass_03", version, W, 560)
+local more = S.MoreButton(f.head, "TargetFinder", f)
+more:SetPoint("RIGHT", f.close, "LEFT", -8, 0)
+-- one-line explanation, just under the title bar (the title bar itself is too narrow for it)
+local sub = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+sub:SetPoint("TOPLEFT", 14, -40)
+sub:SetText("Press one key to find a mob")
 
-local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-title:SetPoint("TOP", 0, -18)
-title:SetText("Target Finder")
-local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-subtitle:SetPoint("TOP", 0, -38)
-subtitle:SetText("Press one key to find a mob near you.")
-CreateFrame("Button", nil, f, "UIPanelCloseButton"):SetPoint("TOPRIGHT", -6, -6)
+local function Num(n) return WHITE .. n .. "|r   " end
 
 -- Step 1: who
-Text(f, GOLD .. "1.|r  Who are you looking for?", 20, -62, "GameFontNormalLarge")
-local mobEdit = Edit(f, 30, -86, 216)
-local favBtn = Button(f, "Save", 70, 262, -85)
-local nearbyBtn = Button(f, "Nearby", 100, 24, -112)
-local questBtn = Button(f, "Quests", 100, 128, -112)
-local savedBtn = Button(f, "Saved", 100, 232, -112)
-local partialChk = Check(f, "Match part of the name", 22, -136)
-local tracking = Text(f, "", 24, -164, "GameFontHighlight", 312) -- "Looking for: <name>"
+local c1 = S.Card(f, Num(1) .. "Who are you looking for?", 12, -58, CW)
+local mobEdit = Edit(c1, L, -34, CW - 2 * L - 78)
+local favBtn = Button(c1, "Save", 70, CW - L - 70, -34)
+local third = math.floor((CW - 2 * L - 12) / 3)
+local mob2Edit = Edit(c1, L, -66, CW - 2 * L - 78)
+-- Small "exact" / "part" label at the right end of a name box (see Refresh).
+for _, e in ipairs({ mobEdit, mob2Edit }) do
+	e.mode = e:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	e.mode:SetPoint("RIGHT", -6, 0)
+	e.mode:SetText("")
+end
+local clear2Btn = Button(c1, "Clear", 70, CW - L - 70, -66)
+local nearbyBtn = Button(c1, "Nearby", third, L, -98)
+local questBtn = Button(c1, "Quests", third, L + third + 6, -98)
+local savedBtn = Button(c1, "Saved", third, L + 2 * (third + 6), -98)
+local partialChk = Check(c1, "Match part of the name", L, -130)
+local tracking = Text(c1, "", L, -160, "GameFontHighlight", CW - 2 * L) -- "Looking for: <name>"
+tracking:SetJustifyH("LEFT")
+c1:SetHeight(198) -- room for two lines under "Looking for"
 
 -- Step 2: keys
-Text(f, GOLD .. "2.|r  Pick your key", 20, -192, "GameFontNormalLarge")
-local findKeyBtn = Button(f, "Set Find key", 120, 24, -216)
-local findKeyText = Text(f, "", 152, -221, "GameFontHighlight", 190)
-local searchKeyBtn = Button(f, "Set Search key", 120, 24, -242)
-local searchKeyText = Text(f, "", 152, -247, "GameFontHighlightSmall", 190)
+local c2 = S.Card(f, Num(2) .. "Pick your key", 12, S.Below(c1), CW)
+local findKeyBtn = Button(c2, "Set Find key", 136, L, -34, true)
+local findKeyText = Text(c2, "", L + 148, -40, "GameFontHighlight", CW - L - 160)
+local searchKeyBtn = Button(c2, "Set Search key", 136, L, -64)
+local searchKeyText = Text(c2, "", L + 148, -70, "GameFontHighlightSmall", CW - L - 160)
+c2:SetHeight(98)
 
 -- Step 3: when found
-Text(f, GOLD .. "3.|r  When I find it...", 20, -276, "GameFontNormalLarge")
-local spellEdit = Edit(f, 30, -300, 196)
-local spellBtn = Button(f, "Spellbook", 90, 242, -299)
-local tagChk = Check(f, "Tag mode: next press tabs to the next enemy", 22, -324)
-local markChk = Check(f, "Marker on enemies:", 22, -348)
-local markerBtn = Button(f, "", 104, 236, -348)
-local friendMarkChk = Check(f, "Marker on friendlies:", 22, -372)
-local friendMarkerBtn = Button(f, "", 104, 236, -372)
-local soundChk = Check(f, "Play a sound:", 22, -396)
-local soundBtn = Button(f, "", 104, 236, -396)
-local mapChk = Check(f, "Show on map", 22, -420)
-local miniChk = Check(f, "Show on minimap", 138, -420)
-local spotsText = Text(f, "", 276, -425, "GameFontHighlightSmall", 80)
+local c3 = S.Card(f, Num(3) .. "When I find it...", 12, S.Below(c2), CW)
+local spellEdit = Edit(c3, L, -34, CW - 2 * L - 100)
+local spellBtn = Button(c3, "Spellbook", 92, CW - L - 92, -34)
+local tagChk = Check(c3, "Tag mode: next press tabs to the next enemy", L, -66)
+local RW = 124 -- the choice buttons on the right
+local markChk = Check(c3, "Marker on enemies", L, -94)
+local markerBtn = Button(c3, "", RW, CW - L - RW, -92)
+local friendMarkChk = Check(c3, "Marker on friendlies", L, -122)
+local friendMarkerBtn = Button(c3, "", RW, CW - L - RW, -120)
+local soundChk = Check(c3, "Play a sound", L, -150)
+local soundBtn = Button(c3, "", RW, CW - L - RW, -148)
+local mapChk = Check(c3, "Show on map", L, -180)
+local miniChk = Check(c3, "Show on minimap", L + 130, -180)
+local spotsText = Text(c3, "", CW - L - 90, -184, "GameFontHighlightSmall", 90)
+spotsText:SetJustifyH("RIGHT")
 TF.spotsText = spotsText
+c3:SetHeight(208)
 
--- What to do next (always at the bottom)
--- The window grows to fit it, so a long message can never overlap the buttons above.
-local status = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-status:SetWidth(316)
+-- What to do next (always at the bottom). The window grows to fit it, so a long message can
+-- never overlap the settings above.
+local BOTTOM = -S.Below(c3) -- where the status box starts
+local sc = CreateFrame("Frame", nil, f)
+sc:SetPoint("TOPLEFT", 12, -BOTTOM)
+sc:SetWidth(CW)
+local scBg = sc:CreateTexture(nil, "BACKGROUND")
+scBg:SetAllPoints()
+scBg:SetColorTexture(1, 1, 1, 0.035)
+S.Border(sc, 1, 1, 1, 0.08)
+local scBar = sc:CreateTexture(nil, "ARTWORK")
+scBar:SetPoint("TOPLEFT", 1, -1); scBar:SetPoint("BOTTOMLEFT", 1, 1); scBar:SetWidth(3)
+scBar:SetColorTexture(S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.9)
+local status = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+status:SetPoint("TOPLEFT", 14, -10)
+status:SetWidth(CW - 28)
 local function Layout()
-	local bottom = BOTTOM
-	status:ClearAllPoints()
-	status:SetPoint("TOPLEFT", f, "TOPLEFT", 22, -(bottom + 12))
 	local h = status:GetStringHeight()
 	if type(h) ~= "number" or h < 15 then h = 15 end
-	f:SetHeight(bottom + 12 + h + 24)
+	sc:SetHeight(h + 20)
+	f:SetHeight(BOTTOM + h + 20 + 12)
 end
 status:SetJustifyH("LEFT")
 status:SetSpacing(3)
@@ -157,11 +142,13 @@ status:SetSpacing(3)
 -- Tooltips (plain words)
 ------------------------------------------------------------------------
 Tip(mobEdit, "Mob name", "Type the name of the mob you want. A list of matches pops up: click one, or use Up/Down and Enter.")
+Tip(mob2Edit, "Second target (optional)", "A second mob to look for. Your Find key then switches between the two: each press tries the other one first, and if only one is around it finds that one. Shift+click in the lists below (or Shift+Enter in the search box) puts a name here.")
+Tip(clear2Btn, "Clear", "Stop looking for the second target.")
 Tip(favBtn, "Save", "Keep this name in your Saved list, so you can pick it again later.")
-Tip(nearbyBtn, "Nearby", "Pick from the mobs that live in the zone you're in. Needs the Questie addon.")
-Tip(questBtn, "Quests", "Pick a mob you need to kill for one of your quests.")
-Tip(savedBtn, "Saved", "Your saved names and the names you used recently.")
-Tip(partialChk, "Match part of the name", "Off: only the exact name. On: any mob whose name contains what you typed, e.g. \"Zanzil\" finds Zanzil Witch Doctor, Zanzil Zombie and the rest. Map dots then show all of them.")
+Tip(nearbyBtn, "Nearby", "Pick from the mobs that live in the zone you're in. Needs the Questie addon. Shift+click a name to make it your second target.")
+Tip(questBtn, "Quests", "Pick a mob you need to kill for one of your quests. Shift+click a name to make it your second target.")
+Tip(savedBtn, "Saved", "Your saved names and the names you used recently. Shift+click a name to make it your second target.")
+Tip(partialChk, "Match part of the name", "Off: only the exact name. On: any mob whose name contains what you typed, e.g. \"Zanzil\" finds Zanzil Witch Doctor, Zanzil Zombie and the rest. Map dots then show all of them. A name you pick from a list (suggestions, Nearby, Quests, Saved) always means that exact mob; the box shows \"exact\" or \"part\".")
 Tip(findKeyBtn, "Find key", "Click, then press the key you want. Pressing that key looks for your mob. Press it again and again while you look around.")
 Tip(searchKeyBtn, "Search key (optional)", "Click, then press a key. That key opens a small box where you can type a new mob name.")
 Tip(spellEdit, "Spell", "The spell to cast on the mob when it's found, e.g. Moonfire or Hunter's Mark. Leave it empty to just target the mob.")
@@ -185,9 +172,19 @@ local function Refresh()
 	local db = TargetFinderDB
 	if not db or not f:IsShown() then return end
 	if not mobEdit:HasFocus() then mobEdit:SetText(db.mob) end
+	if not mob2Edit:HasFocus() then mob2Edit:SetText(db.mob2) end
+	clear2Btn:SetAlpha(TF.Clean(db.mob2) ~= "" and 1 or 0.4)
 	if not spellEdit:HasFocus() then spellEdit:SetText(db.spell) end
 	tagChk:SetChecked(db.tagMode)
 	partialChk:SetChecked(not db.exact)
+	-- With "Match part of the name" on, each box says how its name is matched.
+	for _, e in ipairs({ { mobEdit, "mob" }, { mob2Edit, "mob2" } }) do
+		local edit, n = e[1], TF.Clean(db[e[2]])
+		if db.exact or n == "" then edit.mode:SetText("")
+		elseif TF.IsExact(n) then edit.mode:SetText("|cff66dd66exact|r")
+		else edit.mode:SetText("|cffffd100part|r") end
+		edit:SetTextInsets(8, edit.mode:GetText() ~= "" and 40 or 8, 0, 0)
+	end
 	markChk:SetChecked(db.mark)
 	soundChk:SetChecked(db.sound)
 	markerBtn:SetText(TF.MarkerIcon(db.marker) .. " " .. TF.MARKERS[db.marker])
@@ -200,7 +197,7 @@ local function Refresh()
 	mapChk:SetChecked(db.mapPins)
 	miniChk:SetChecked(db.miniPins)
 	local spots = ""
-	if (db.mapPins or db.miniPins) and TF.Clean(db.mob) ~= "" then
+	if (db.mapPins or db.miniPins) and #TF.Names() > 0 then
 		if TF.pinNote then spots = GREY .. TF.pinNote .. "|r"
 		elseif TF.pinCount == 0 then spots = GREY .. "no spots known|r"
 		else spots = GREY .. TF.pinCount .. (TF.pinCount == 1 and " spot|r" or " spots|r") end
@@ -208,8 +205,18 @@ local function Refresh()
 	spotsText:SetText(spots)
 
 	local body, err = TF.BuildBody()
-	local name = TF.Clean(db.mob)
-	tracking:SetText(body and ("Looking for: " .. WHITE .. name .. "|r") or (GREY .. "Looking for: nobody yet|r"))
+	local names = TF.Names()
+	local name = names[2] and (names[1] .. "|r or " .. WHITE .. names[2]) or (names[1] or "")
+	-- a small dot in the same colour as that mob's map dots
+	local function Dot(i)
+		local c = TF.PIN_COLORS and TF.PIN_COLORS[i]
+		if not c then return "" end
+		return ("|TInterface\\CharacterFrame\\TempPortraitAlphaMask:10:10:0:0:64:64:0:64:0:64:%d:%d:%d|t "):format(math.floor(c[1] * 255), math.floor(c[2] * 255), math.floor(c[3] * 255))
+	end
+	if not body then tracking:SetText(GREY .. "Looking for: nobody yet|r")
+	elseif names[2] then tracking:SetText("Looking for: " .. Dot(1) .. WHITE .. names[1] .. "|r and " .. Dot(2) .. WHITE .. names[2] .. "|r\n"
+		.. GREY .. "Each press of your key switches between them.|r")
+	else tracking:SetText("Looking for: " .. WHITE .. names[1] .. "|r") end
 
 	local findKey, searchKey = KeyName(TF.BINDING), KeyName("TARGETFINDER_OPEN_SEARCH")
 	findKeyText:SetText(findKey and ("Find key: " .. GREEN .. findKey .. "|r") or (ORANGE .. "No Find key yet|r"))
@@ -238,9 +245,11 @@ f:SetScript("OnShow", function() lastMsg = nil; Refresh() end)
 local function Say(ok, msg) lastMsg = (ok and GREEN or RED) .. msg .. "|r"; Refresh() end
 local function Changed() TF.Apply(); Refresh() end
 
-local function Choose(name)
-	mobEdit:ClearFocus()
-	Say(TF.Track(name))
+-- Shift = the second target, everywhere a name is picked.
+local function Choose(name, second)
+	mobEdit:ClearFocus(); mob2Edit:ClearFocus()
+	if second == nil then second = IsShiftKeyDown and IsShiftKeyDown() and true or false end
+	Say(TF.Track(name, second, true)) -- picked from a list: that exact mob
 end
 
 ------------------------------------------------------------------------
@@ -248,22 +257,22 @@ end
 -- Click a row, or Up/Down + Enter, or Tab for the top one.
 ------------------------------------------------------------------------
 local MAX_ROWS = 8
-local sugg = CreateFrame("Frame", "TargetFinderSuggest", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+local sugg = CreateFrame("Frame", "TargetFinderSuggest", UIParent)
 sugg:SetFrameStrata("TOOLTIP")
 sugg:SetWidth(250)
 sugg:SetClampedToScreen(true)
-if sugg.SetBackdrop then
-	sugg:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-	sugg:SetBackdropColor(0, 0, 0, 0.95)
-end
+S.Panel(sugg, 0.98)
+S.Border(sugg, 0.26, 0.26, 0.31, 1)
 sugg:Hide()
 local rows, results, onPick = {}, {}, nil
 for i = 1, MAX_ROWS do
 	local r = CreateFrame("Button", nil, sugg)
 	r:SetSize(238, 16)
 	r:SetPoint("TOPLEFT", 6, -5 - (i - 1) * 16)
-	r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+	local rh = r:CreateTexture(nil, "HIGHLIGHT")
+	rh:SetAllPoints()
+	rh:SetColorTexture(S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.18)
+	r:SetHighlightTexture(rh)
 	local t = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	t:SetPoint("LEFT", 2, 0)
 	t:SetPoint("RIGHT", -2, 0)
@@ -334,7 +343,7 @@ TF.AttachSuggestions = AttachSuggestions
 -- Grey placeholder text, shown while the box is empty.
 local function AddHint(edit, text)
 	local h = edit:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	h:SetPoint("LEFT", 2, 0)
+	h:SetPoint("LEFT", 8, 0)
 	h:SetText(text)
 	edit:HookScript("OnTextChanged", function(self) h:SetShown(self:GetText() == "") end)
 	h:SetShown(edit:GetText() == "")
@@ -342,15 +351,25 @@ local function AddHint(edit, text)
 end
 TF.AddHint = AddHint
 
-mobEdit:SetScript("OnTextChanged", function(self, user) if user then TargetFinderDB.mob = self:GetText(); Changed() end end)
+-- Typing in a box makes it a typed name again (matched by "Match part of the name").
+mobEdit:SetScript("OnTextChanged", function(self, user) if user then TargetFinderDB.mob = self:GetText(); TargetFinderDB.mobPicked = false; Changed() end end)
 local function CommitMob(self)
 	self:ClearFocus()
 	sugg:Hide()
 	if TF.BuildBody() then TF.AddRecent(TF.Clean(TargetFinderDB.mob)) end
 end
 mobEdit:SetScript("OnEnterPressed", CommitMob)
-AttachSuggestions(mobEdit, Choose)
+AttachSuggestions(mobEdit, function(name) Choose(name, false) end)
 AddHint(mobEdit, "Type a mob's name...")
+mob2Edit:SetScript("OnTextChanged", function(self, user) if user then TargetFinderDB.mob2 = self:GetText(); TargetFinderDB.mob2Picked = false; Changed() end end)
+mob2Edit:SetScript("OnEnterPressed", function(self)
+	self:ClearFocus(); sugg:Hide()
+	local n = TF.Clean(TargetFinderDB.mob2)
+	if n ~= "" and TF.BuildBody() then TF.AddRecent(n) end
+end)
+AttachSuggestions(mob2Edit, function(name) Choose(name, true) end)
+AddHint(mob2Edit, "Second target (optional)")
+clear2Btn:SetScript("OnClick", function() mob2Edit:ClearFocus(); Say(TF.ClearSecond()) end)
 f:HookScript("OnHide", HideSuggestions)
 
 spellEdit:SetScript("OnTextChanged", function(self, user) if user then TargetFinderDB.spell = self:GetText(); Changed() end end)
@@ -488,31 +507,46 @@ end
 ------------------------------------------------------------------------
 local MODIFIERS = { LSHIFT = 1, RSHIFT = 1, LCTRL = 1, RCTRL = 1, LALT = 1, RALT = 1, LMETA = 1, RMETA = 1 }
 local MOUSE = { MiddleButton = "BUTTON3", Button4 = "BUTTON4", Button5 = "BUTTON5" }
+-- Left and right click only with Shift, Ctrl or Alt held (as in the game's own key bindings).
+local MOUSE_MODIFIED = { LeftButton = "BUTTON1", RightButton = "BUTTON2" }
 
-local cap = CreateFrame("Frame", "TargetFinderKeyCapture", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-cap:SetSize(320, 110)
-cap:SetPoint("CENTER", 0, 140)
-cap:SetFrameStrata("FULLSCREEN_DIALOG")
-cap:EnableMouse(true)
-if cap.SetBackdrop then
-	cap:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background", edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-		tile = true, tileSize = 32, edgeSize = 24, insets = { left = 8, right = 8, top = 8, bottom = 8 } })
+-- a small dark box with a gold line along the top (key capture, quick search)
+local function Popup(name, w, h, strata)
+	local p = CreateFrame("Frame", name, UIParent)
+	p:SetSize(w, h)
+	p:SetFrameStrata(strata)
+	p:SetClampedToScreen(true)
+	p:EnableMouse(true)
+	S.Panel(p)
+	local top = p:CreateTexture(nil, "ARTWORK")
+	top:SetPoint("TOPLEFT", 1, -1); top:SetPoint("TOPRIGHT", -1, -1); top:SetHeight(2)
+	top:SetColorTexture(S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.9)
+	p:Hide()
+	return p
 end
-cap:Hide()
+
+local cap = Popup("TargetFinderKeyCapture", 330, 132, "FULLSCREEN_DIALOG")
+cap:SetPoint("CENTER", 0, 140)
 local capTitle = cap:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 capTitle:SetPoint("TOP", 0, -16)
 local capText = cap:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 capText:SetPoint("TOP", 0, -42)
 capText:SetWidth(290)
-local capCancel = CreateFrame("Button", nil, cap, "UIPanelButtonTemplate")
-capCancel:SetSize(90, 22)
+local capCancel = S.Button(cap, "Cancel", 90, 22)
 capCancel:SetPoint("BOTTOM", 0, 12)
-capCancel:SetText("Cancel")
 
 local capAction, capLabel, capPending
+-- While you pick a key, the whole screen takes mouse buttons and the scroll wheel (the box
+-- itself sits above it, so Cancel still works).
+local catch = CreateFrame("Frame", nil, UIParent)
+catch:SetAllPoints(UIParent)
+catch:SetFrameStrata("FULLSCREEN")
+catch:EnableMouse(true)
+catch:Hide()
 local function StopCapture()
 	cap:EnableKeyboard(false)
 	cap:Hide()
+	catch:Hide()
 	capAction, capPending = nil, nil
 end
 capCancel:SetScript("OnClick", StopCapture)
@@ -541,15 +575,27 @@ cap:SetScript("OnKeyDown", function(_, key)
 	if key == "ESCAPE" then StopCapture() return end
 	TryKey(Combo(key))
 end)
-cap:SetScript("OnMouseDown", function(_, button)
-	if MOUSE[button] then TryKey(Combo(MOUSE[button])) end
-end)
+local function Mouse(_, button)
+	if MOUSE[button] then TryKey(Combo(MOUSE[button])) return end
+	if MOUSE_MODIFIED[button] and (IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown()) then
+		TryKey(Combo(MOUSE_MODIFIED[button]))
+	end
+end
+local function Wheel(_, delta)
+	TryKey(Combo(delta > 0 and "MOUSEWHEELUP" or "MOUSEWHEELDOWN"))
+end
+for _, f in ipairs({ cap, catch }) do
+	f:SetScript("OnMouseDown", Mouse)
+	if f.EnableMouseWheel then f:EnableMouseWheel(true) end
+	f:SetScript("OnMouseWheel", Wheel)
+end
 
 local function StartCapture(action, label)
 	if InCombatLockdown() then Say(false, "Keys can't be changed during a fight. Try again after it.") return end
 	capAction, capLabel, capPending = action, label, nil
 	capTitle:SetText("Set your " .. label .. " key")
-	capText:SetText("Press the key you want to use now.\n" .. GREY .. "(Esc = cancel)|r")
+	capText:SetText("Press the key you want to use now.\n" .. GREY .. "Shift, Ctrl and Alt work, and so do the\nscroll wheel and mouse buttons. (Esc = cancel)|r")
+	catch:Show()
 	cap:Show()
 	cap:EnableKeyboard(true)
 	if cap.SetPropagateKeyboardInput then cap:SetPropagateKeyboardInput(false) end
@@ -595,6 +641,7 @@ end
 local function UpdateMinimap()
 	if TargetFinderDB.minimap.hide then mm:Hide() else PlaceButton(); mm:Show() end
 end
+S.Group(mm, "TargetFinder", function() return TargetFinderDB and TargetFinderDB.minimap end, UpdateMinimap) -- the shared minimap bag
 
 mm:SetScript("OnDragStart", function(self)
 	self:SetScript("OnUpdate", function()
@@ -610,33 +657,20 @@ mm:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
 ------------------------------------------------------------------------
 -- Search box (minimap right-click, or the Search key): Enter picks, Escape cancels
 ------------------------------------------------------------------------
-local q = CreateFrame("Frame", "TargetFinderQuick", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-q:SetSize(260, 78)
-q:SetFrameStrata("DIALOG")
-q:SetClampedToScreen(true)
-q:EnableMouse(true)
-if q.SetBackdrop then
-	q:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		edgeSize = 14, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-	q:SetBackdropColor(0, 0, 0, 0.9)
-end
-q:Hide()
+local q = Popup("TargetFinderQuick", 272, 102, "DIALOG")
 local qTitle = q:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-qTitle:SetPoint("TOPLEFT", 10, -9)
+qTitle:SetPoint("TOPLEFT", 12, -11)
 qTitle:SetText("Who are you looking for?")
-local qEdit = CreateFrame("EditBox", nil, q, "InputBoxTemplate")
-qEdit:SetSize(232, 20)
-qEdit:SetPoint("TOPLEFT", 16, -28)
-qEdit:SetAutoFocus(false)
-qEdit:SetMaxLetters(80)
+local qEdit = S.Edit(q, 248, 24)
+qEdit:SetPoint("TOPLEFT", 12, -30)
 local qHint = q:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-qHint:SetPoint("TOPLEFT", 10, -56)
-qHint:SetWidth(240)
+qHint:SetPoint("TOPLEFT", 12, -64)
+qHint:SetWidth(248)
 qHint:SetJustifyH("LEFT")
-local HINT = GREY .. "Up/Down = choose   Enter = pick   Esc = cancel|r"
+local HINT = GREY .. "Up/Down = choose   Enter = pick   Esc = cancel|r\n" .. GREY .. "Shift+Enter = make it your second target|r"
 
-local function QuickTrack(name)
-	local ok, msg = TF.Track(name)
+local function QuickTrack(name, picked)
+	local ok, msg = TF.Track(name, IsShiftKeyDown and IsShiftKeyDown() and true or false, picked)
 	if not ok then qHint:SetText(RED .. msg .. "|r") return end
 	TF.Print(msg)
 	qEdit:ClearFocus()
@@ -644,7 +678,7 @@ local function QuickTrack(name)
 end
 qEdit:SetScript("OnEnterPressed", function(self) TF.HideSuggestions(); QuickTrack(self:GetText()) end)
 qEdit:SetScript("OnEscapePressed", function(self) self:ClearFocus(); q:Hide() end) -- nothing saved
-AttachSuggestions(qEdit, QuickTrack)
+AttachSuggestions(qEdit, function(name) QuickTrack(name, true) end)
 AddHint(qEdit, "Type a mob's name...")
 q:SetScript("OnHide", TF.HideSuggestions)
 
@@ -677,13 +711,14 @@ mm:SetScript("OnEnter", function(self)
 	GameTooltip:AddLine("Target Finder")
 	GameTooltip:AddLine("Finds a mob for you when you press your key.", 1, 1, 1, true)
 	local db = TargetFinderDB
-	if TF.Clean(db.mob) ~= "" then GameTooltip:AddLine("Looking for: " .. WHITE .. db.mob .. "|r", 0.8, 0.8, 0.8) end
+	local names = TF.Names()
+	if names[1] then GameTooltip:AddLine("Looking for: " .. WHITE .. table.concat(names, "|r and " .. WHITE) .. "|r", 0.8, 0.8, 0.8) end
 	local key = KeyName(TF.BINDING)
 	GameTooltip:AddLine("Find key: " .. (key and (GREEN .. key .. "|r") or (ORANGE .. "not set yet|r")), 0.8, 0.8, 0.8)
 	GameTooltip:AddLine(" ")
 	GameTooltip:AddLine(WHITE .. "Left-click|r  open Target Finder", 0.8, 0.8, 0.8)
 	GameTooltip:AddLine(WHITE .. "Right-click|r  quick search for a mob", 0.8, 0.8, 0.8)
-	GameTooltip:AddLine(WHITE .. "Ctrl + right-click|r  clear the mob", 0.8, 0.8, 0.8)
+	GameTooltip:AddLine(WHITE .. "Ctrl + right-click|r  stop looking (clears both)", 0.8, 0.8, 0.8)
 	GameTooltip:AddLine(WHITE .. "Drag|r  move this button", 0.8, 0.8, 0.8)
 	GameTooltip:Show()
 end)

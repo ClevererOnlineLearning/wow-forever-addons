@@ -1,0 +1,11 @@
+## Interface: 16001
+## Title: FrameCheck
+## Notes: Your FPS, frame time, how much of each frame your add-ons use, and your ping. Hover for details, right-click or /fcheck for settings.
+## Version: 1.5
+## Author: good mens (Mephz on WoW Forever)
+## X-License: MIT (keep the credit when sharing)
+## SavedVariables: FrameCheckDB
+## IconTexture: Interface\Icons\INV_Misc_PocketWatch_01
+Skin.lua
+FrameCheck.lua
+Options.lua

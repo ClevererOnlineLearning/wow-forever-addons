@@ -1,9 +1,10 @@
 ## Interface: 16001
 ## Title: UI Fade
 ## Notes: Makes your whole interface see-through so it's easier on the eyes. /uifade
-## Version: 2.1
+## Version: 2.2.4
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## SavedVariables: UIFadeDB
 ## IconTexture: Interface\Icons\Spell_Holy_MindVision
+Skin.lua
 UIFade.lua

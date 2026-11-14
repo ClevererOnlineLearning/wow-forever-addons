@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Target Finder
 ## Notes: Press one key to find a mob near you. Type a name, pick a key, done. /tfinder
-## Version: 3.6
+## Version: 3.9
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## OptionalDeps: Questie, QuestieDB
@@ -11,6 +11,7 @@ Libs\LibStub.lua
 Libs\CallbackHandler-1.0.lua
 Libs\HereBeDragons-2.0.lua
 Libs\HereBeDragons-Pins-2.0.lua
+Skin.lua
 Core.lua
 Map.lua
 UI.lua

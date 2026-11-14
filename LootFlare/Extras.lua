@@ -1,4 +1,6 @@
 -- Loot Flare extras: the big banner for good drops, and the gold-per-hour tracker.
+local _, ns = ...
+local Skin = ns.Skin
 local LF = LootFlare
 local floor, min, max, sin, pi = math.floor, math.min, math.max, math.sin, math.pi
 local function Secret(v) return issecretvalue and issecretvalue(v) or false end
@@ -120,24 +122,19 @@ end
 ------------------------------------------------------------------------
 -- Gold per hour: money looted + vendor value of items looted, over time played
 ------------------------------------------------------------------------
-local gph = CreateFrame("Button", "LootFlareGoldFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-gph:SetSize(230, 26)
+local gph = CreateFrame("Button", "LootFlareGoldFrame", UIParent)
+gph:SetSize(230, 24)
+gph:SetFrameStrata("HIGH") -- above action buttons and other add-ons' icons
 gph:SetMovable(true)
 gph:SetClampedToScreen(true)
 gph:RegisterForDrag("LeftButton")
 gph:RegisterForClicks("RightButtonUp")
-if gph.SetBackdrop then
-	gph:SetBackdrop({
-		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true, tileSize = 16, edgeSize = 12,
-		insets = { left = 3, right = 3, top = 3, bottom = 3 },
-	})
-	gph:SetBackdropColor(0, 0, 0, 0.7)
-	gph:SetBackdropBorderColor(1, 0.82, 0, 0.8)
-end
+Skin.Panel(gph, 0.8)
+local gAccent = gph:CreateTexture(nil, "ARTWORK")
+gAccent:SetPoint("TOPLEFT", 1, -1); gAccent:SetPoint("BOTTOMLEFT", 1, 1); gAccent:SetWidth(2)
+gAccent:SetColorTexture(1, 0.82, 0, 0.9)
 local gText = gph:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-gText:SetPoint("CENTER")
+gText:SetPoint("CENTER", 1, 0)
 gph:Hide()
 
 local function S() return LF.db.session end
@@ -194,7 +191,7 @@ gph:SetScript("OnDragStop", function(self)
 	self:StopMovingOrSizing()
 	local x, y = self:GetCenter()
 	local px, py = UIParent:GetCenter()
-	LF.db.gphPos.x, LF.db.gphPos.y = floor(x - px + 0.5), floor(y - py + 0.5)
+	LF.db.gphPos = { x = floor(x - px + 0.5), y = floor(y - py + 0.5) }
 	LF.ApplyGold()
 end)
 gph:SetScript("OnClick", function(_, button) if button == "RightButton" then LF.ResetGold() end end)
@@ -214,11 +211,38 @@ gph:SetScript("OnEnter", function(self)
 end)
 gph:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+-- Just above the game's own action bars (the highest of them that's showing).
+local BARS = { "MainMenuBar", "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "ReputationWatchBar" }
+local function AboveBars()
+	local top
+	local us = UIParent:GetEffectiveScale()
+	for _, name in ipairs(BARS) do
+		local f = _G[name]
+		if f and f.IsShown and f:IsShown() and f.GetTop then
+			local ok, t = pcall(f.GetTop, f)
+			if ok and type(t) == "number" and not Secret(t) then
+				t = t * f:GetEffectiveScale() / us
+				if not top or t > top then top = t end
+			end
+		end
+	end
+	return (top or 90) + 6
+end
+
 function LF.ApplyGold()
 	local db = LF.db
 	gph:ClearAllPoints()
-	gph:SetPoint("CENTER", UIParent, "CENTER", db.gphPos.x, db.gphPos.y)
+	if type(db.gphPos) == "table" and db.gphPos.x then
+		gph:SetPoint("CENTER", UIParent, "CENTER", db.gphPos.x, db.gphPos.y)
+	else
+		gph:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, AboveBars())
+	end
 	if db.gph then LF.RefreshGold(); gph:Show() else gph:Hide() end
+end
+
+function LF.ResetGoldPosition()
+	LF.db.gphPos = nil
+	LF.ApplyGold()
 end
 
 local ev = CreateFrame("Frame")
@@ -229,5 +253,10 @@ ev:SetScript("OnEvent", function(_, _, isLogin)
 		local s = S()
 		s.secs, s.money, s.items = 0, 0, 0
 	end
+	-- the old default spot (middle of the screen) gives way to "just above the action bars"
+	local p = LF.db.gphPos
+	if type(p) == "table" and p.x == 0 and p.y == -260 then LF.db.gphPos = nil end
 	LF.ApplyGold()
+	-- the action bars can settle a moment after loading; place the box again then
+	if C_Timer then C_Timer.After(1, LF.ApplyGold) end
 end)

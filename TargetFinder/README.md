@@ -1,4 +1,4 @@
-# Target Finder 3.6 (WoW Forever)
+# Target Finder 3.8 (WoW Forever)
 
 **Press one key to find a mob near you.**
 
@@ -25,6 +25,10 @@ Click the **spyglass button by your minimap** (or type `/tfinder`). The window w
 **1. Who are you looking for?**
 Type the mob's name. A list of matches pops up as you type: click one, or use the arrow keys and press Enter.
 You can also pick one from **Nearby** (mobs in your zone), **Quests** (mobs your quests need), or **Saved**.
+
+*(Optional)* Put a **second target** in the box underneath. Your one Find key then switches between the two:
+each press tries the other mob first, and if only one of them is around, it finds that one.
+**Shift+click** a name in Nearby, Quests or Saved (or press **Shift+Enter** in the quick search box) to make it the second target.
 
 **2. Pick your key.**
 Click **Set Find key**, then press the key you want (for example `F`). If that key already does something,
@@ -59,20 +63,22 @@ walk around and keep pressing your key.
 - Each press **clears your current target first**. That's on purpose: it makes sure your spell only ever hits the mob you asked for.
 - It only finds mobs **close enough for you to see**. It can't find mobs that haven't spawned, or ones far away.
 - If several mobs have the same name, each press may switch between them. Stop pressing once you've got one.
-- If the mob it finds is **already tagged by someone else** (grey to you), chat tells you and the "found it" sound
-  stays quiet. Press again to look for another one. (The game doesn't let a key skip tagged mobs, so it still
+- If the mob it finds is **already tagged by someone else** (grey to you), the "found it" sound stays quiet.
+  Press again to look for another one. (The game doesn't let a key skip tagged mobs, so it still
   gets targeted, and your spell still fires, on that press.)
 - It finds **friendly NPCs** too (vendors, trainers, quest givers). They show in green in Nearby and the search list.
 - Each search clears your target first, so a failed search never leaves you or anyone else selected for your spell.
   (With **Tag mode** on, a living enemy you already have targeted is kept and the key tabs on from it.)
 - It never casts on, marks or plays a sound for dead mobs.
-- The pink map dots are the places the mob *can* spawn (from Questie's database), not where it is right now.
+- The pink map dots (blue for your second target) are the places the mob *can* spawn (from Questie's database), not where it is right now.
 - **Nearby** needs Questie. It shows mobs that *live* in your zone, not ones that are spawned right now.
 - WoW Forever doesn't let addons read the name of your current target, so you can't copy a name from your target. Type it or pick it instead.
 - In a raid, you need lead or assist to put markers on mobs.
 
 - It matches the **exact name**, unless you tick **Match part of the name** (under the name box): then "Zanzil" finds
   Zanzil Witch Doctor, Zanzil Zombie and every other mob with Zanzil in its name, and the map shows all of them.
+  A name you **pick from a list** (the suggestions, Nearby, Quests, Saved) always means that exact mob; only names
+  you type match part. Each name box shows **exact** or **part** so you can see which.
 - Changing the mob name during a fight starts working when the fight ends. WoW doesn't let any addon change what a key does mid-fight.
   Pressing your Find key over and over in a fight works fine.
 

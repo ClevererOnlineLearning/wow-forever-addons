@@ -2,7 +2,7 @@
 -- Reads only UnitThreatSituation / UnitAffectingCombat on nameplate units, and checks every
 -- value with issecretvalue first. Only the health bar colour changes; when a mob isn't in a
 -- threat state the bar goes back to the colour Blizzard gave it. Event-driven, no OnUpdate.
-local ADDON = ...
+local ADDON, ns = ...
 local TT = {}
 _G.ThreatTint = TT
 
@@ -29,8 +29,8 @@ TT.LEGEND = {
 		{ "gaining", "On someone else, you're about to take it back (80%+)" }, { "pet", "On your pet" },
 		{ "loose", "Fighting your group, not on your threat list yet" } },
 	dps = { { "you", "Attacking you" }, { "losing", "On you, someone is about to take it" },
-		{ "other", "Safe: on someone else (under 50%)" }, { "gaining", "Careful: 50-80% of the threat to pull it" },
-		{ "close", "About to pull it (80%+)" }, { "pet", "On your pet (goes yellow/orange as you near pulling it)" } },
+		{ "other", "Safe: on someone else (up to 30%)" }, { "gaining", "Careful: fades in from 30%, full at 60%" },
+		{ "close", "About to pull it: full at 85%, then fades to red" }, { "pet", "On your pet (fades to yellow, orange, red as you near pulling it)" } },
 }
 
 -- Your colour for a state (your own pick from the window, or the default).
@@ -84,6 +84,24 @@ function TT.Band(role, pct)
 		if pct >= 80 then return "gaining" elseif pct >= 50 then return "close" end
 	end
 	return "other"
+end
+
+-- DPS: a smooth fade instead of steps, so a climbing threat shows long before it flips.
+-- From the mob's resting colour (blue on your pet, green on someone else) up to 30%, through
+-- yellow at 60% and orange at 85%, to red at 100% (you pull it).
+local STOPS = { { 30, nil }, { 60, "gaining" }, { 85, "close" }, { 100, "you" } }
+function TT.Fade(role, base, pct)
+	local function C(key) return key and TT.Color(role, key) or TT.Color(role, base) end
+	if pct <= STOPS[1][1] then return C(nil) end
+	for i = 2, #STOPS do
+		local a, b = STOPS[i - 1], STOPS[i]
+		if pct <= b[1] then
+			local f = (pct - a[1]) / (b[1] - a[1])
+			local ca, cb = C(a[2]), C(b[2])
+			return { ca[1] + (cb[1] - ca[1]) * f, ca[2] + (cb[2] - ca[2]) * f, ca[3] + (cb[3] - ca[3]) * f }
+		end
+	end
+	return C("you")
 end
 
 -- How close you are to pulling a mob, 0-100 (nil when the game doesn't say).
@@ -235,6 +253,22 @@ local function Restore(bar)
 	if o then SetColor(bar, o) end
 end
 
+-- "Rising fast": how many seconds until you'd pull a mob if your threat keeps climbing at the
+-- rate of the last second or two (nil = not climbing, or too soon to tell). Two samples per bar,
+-- about a second apart; a drop (threat wipe, the tank catching up) starts over.
+local hist = setmetatable({}, { __mode = "k" })
+function TT.Rising(bar, pct, now)
+	if not pct then hist[bar] = nil; return nil end
+	local h = hist[bar]
+	if not h or pct < h.bp - 2 then hist[bar] = { bt = now, bp = pct }; return nil end
+	if now - h.bt >= 1 then h.at, h.ap, h.bt, h.bp = h.bt, h.bp, now, pct end
+	if not h.at or now <= h.at then return nil end
+	local rate = (pct - h.ap) / (now - h.at)
+	if rate <= 0 then return nil end
+	return (100 - pct) / rate
+end
+TT.RISING_SECONDS = 3
+
 function TT.Update(unit)
 	if type(unit) ~= "string" or not unit:find("^nameplate%d+$") then return end
 	local bar = GetBar(unit)
@@ -245,16 +279,34 @@ function TT.Update(unit)
 	local state = db and db.enabled and TT.State(unit)
 	-- The % matters whenever the mob is on someone else, including your pet (are you about to
 	-- pull it off your pet?). On your pet the bar stays blue while you're safe; as DPS it turns
-	-- yellow at 50% and orange at 80%, so pulling it off your pet never comes as a surprise.
+	-- a fade from 30% through yellow (60%) and orange (85%) to red, so pulling it off your pet
+	-- never comes as a surprise. The game's "you've passed them" flag warns even without a %.
 	-- (Tanks keep blue: taking a mob from your own pet is fine for a tank.)
 	local pct = (state == "other" or state == "gaining" or state == "pet") and TT.Percent(unit) or nil
-	local numColor
-	if pct and db.shade then
+	local numColor, faded
+	if role == "dps" and (state == "pet" or state == "other" or state == "gaining") and db.shade then
+		-- The game's own "you've passed whoever has it" flag (threat status 1) counts even when
+		-- your pet has the mob and even when the % is missing: you can pull it any moment.
+		local over = Situation("player", unit) == 1
+		local base = state == "pet" and "pet" or "other"
+		local p = pct
+		if over and (not p or p < 90) then p = 90 end
+		if p then faded = TT.Fade(role, base, p); numColor = faded end
+		-- Climbing fast enough to pull it within a few seconds: pulse towards red now, while
+		-- there's still time to ease off. (A single huge crit can't be seen coming.)
+		local now = GetTime()
+		local secs = TT.Rising(bar, pct, now)
+		if db.rising and faded and secs and secs <= TT.RISING_SECONDS and pct >= 40 and pct < 100 then
+			local red = TT.Color(role, "you")
+			local f = 0.25 + 0.5 * (0.5 + 0.5 * math.sin(now * 9))
+			faded = { faded[1] + (red[1] - faded[1]) * f, faded[2] + (red[2] - faded[2]) * f, faded[3] + (red[3] - faded[3]) * f }
+		end
+	elseif pct and db.shade then
 		local band = TT.Band(role, pct)
 		numColor = TT.Color(role, band)
-		if state ~= "pet" or (role == "dps" and band ~= "other") then state = band end
+		if state ~= "pet" then state = band end
 	end
-	local c = state and TT.COLORS[role][state] and TT.Color(role, state)
+	local c = faded or (state and TT.COLORS[role][state] and TT.Color(role, state))
 	TT.SetNumber(bar, c and db.number and pct, numColor or c)
 	if c then
 		if not painted[bar] then
@@ -300,8 +352,11 @@ ev:SetScript("OnEvent", function(self, event, unit)
 		if db.role ~= "tank" and db.role ~= "dps" then db.role = db.tank and "tank" or "auto" end
 		db.tank = nil
 		if db.shade == nil then db.shade = true end
+		if db.rising == nil then db.rising = true end
 		if db.number == nil then db.number = true end
 		if type(db.colors) ~= "table" then db.colors = {} end
+		if type(db.minimap) ~= "table" then db.minimap = { hide = false, angle = 225 } end
+		if TT.UpdateMinimapButton then TT.UpdateMinimapButton() end
 		autoTank = TT.AutoTank()
 		self:RegisterEvent("NAME_PLATE_UNIT_ADDED")
 		self:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
@@ -361,7 +416,7 @@ local function Help()
 		-- a small block of that colour (white texture tinted in the |T escape), then what it means
 		Print(("|TInterface\\Buttons\\WHITE8X8:10:24:0:0:8:8:0:8:0:8:%d:%d:%d|t %s"):format(c[1] * 255, c[2] * 255, c[3] * 255, row[2]))
 	end
-	if db.shade then Print("Colour steps are on: the colour of a mob on someone else changes at 50% and 80% of the threat needed.") end
+	if db.shade then Print("Threat colours are on: as DPS, a mob on someone else (or your pet) fades from 30% to yellow (60%), orange (85%) and red (100%) of the threat needed to pull it.") end
 	Print("Mobs nobody is fighting keep their normal colour. Settings window: " .. W .. "/tint|r")
 	Print("Commands: " .. W .. "/tint auto|r (default), " .. W .. "/tint tank|r, " .. W .. "/tint dps|r, " .. W .. "/tint off|r, " .. W .. "/tint on|r, " .. W .. "/tint help|r")
 end
@@ -369,24 +424,14 @@ end
 ------------------------------------------------------------------------
 -- Settings window (/tint): on/off, role, shading, and the colour legend. Click a colour to change it.
 ------------------------------------------------------------------------
-local win = CreateFrame("Frame", "ThreatTintFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-win:SetSize(340, 430)
-win:SetPoint("CENTER")
-win:SetFrameStrata("DIALOG")
-win:SetMovable(true); win:EnableMouse(true); win:SetClampedToScreen(true)
-win:RegisterForDrag("LeftButton")
-win:SetScript("OnDragStart", win.StartMoving)
-win:SetScript("OnDragStop", win.StopMovingOrSizing)
-if win.SetBackdrop then
-	win:SetBackdrop({
-		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-		tile = true, tileSize = 32, edgeSize = 32,
-		insets = { left = 11, right = 12, top = 12, bottom = 11 },
-	})
-end
-win:Hide()
-tinsert(UISpecialFrames, "ThreatTintFrame") -- Escape closes it
+local S = ns.Skin
+local GetMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+local WW = 384
+local CW = WW - 24
+local win = S.Window("ThreatTintFrame", "ThreatTint", "Interface\\Icons\\Ability_Warrior_DefensiveStance",
+	GetMeta and GetMeta("ThreatTint", "Version"), WW, 580)
+local more = S.MoreButton(win.head, "ThreatTint", win)
+more:SetPoint("RIGHT", win.close, "LEFT", -8, 0)
 
 local function Text(parent, font, x, y, w)
 	local t = parent:CreateFontString(nil, "OVERLAY", font)
@@ -394,30 +439,25 @@ local function Text(parent, font, x, y, w)
 	if w then t:SetWidth(w) end
 	return t
 end
-local function Check(label, x, y)
-	local c = CreateFrame("CheckButton", nil, win, "UICheckButtonTemplate")
-	c:SetSize(24, 24); c:SetPoint("TOPLEFT", x, y)
-	local t = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	t:SetPoint("LEFT", c, "RIGHT", 2, 0); t:SetText(label)
-	c.label = t
-	return c
-end
 
-local title = win:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-title:SetPoint("TOP", 0, -18); title:SetText("ThreatTint")
-CreateFrame("Button", nil, win, "UIPanelCloseButton"):SetPoint("TOPRIGHT", -6, -6)
+-- General
+local c1 = S.Card(win, "Nameplates", 12, -44, CW)
+local onChk = S.Check(c1, "Colour enemy nameplates by threat", 14, -34)
+local shadeChk = S.Check(c1, "Colour fades by threat % (how close you are)", 14, -60)
+local numChk = S.Check(c1, "Show the threat % next to each nameplate", 14, -86)
+local risingChk = S.Check(c1, "Pulse when your threat is climbing fast", 14, -112)
+S.Tip(risingChk, "Climbing fast", "As DPS: if your threat is rising quickly enough to pull the mob within about 3 seconds, its nameplate pulses towards red, even if it's only yellow so far.")
+risingChk:SetScript("OnClick", function(self) ThreatTintDB.rising = self:GetChecked() and true or false; TT.UpdateAll() end)
+c1:SetHeight(142)
 
-local onChk = Check("Colour enemy nameplates by threat", 18, -42)
-local shadeChk = Check("Colour steps by threat % (how close you are to pulling)", 18, -66)
-local numChk = Check("Show the threat % next to each nameplate", 18, -90)
-
-Text(win, "GameFontNormal", 22, -124):SetText("You are:")
+-- Role
+local c2 = S.Card(win, "You are", 12, S.Below(c1), CW)
 local roleBtns = {}
 local ROLES = { { "auto", "Auto" }, { "tank", "Tank" }, { "dps", "DPS / Healer" } }
+local bw = math.floor((CW - 28 - 12) / 3)
 for i, r in ipairs(ROLES) do
-	local b = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
-	b:SetSize(i == 3 and 96 or 60, 20); b:SetPoint("TOPLEFT", 84 + (i - 1) * 66, -120)
-	b:SetText(r[2])
+	local b = S.Button(c2, r[2], bw, 24)
+	b:SetPoint("TOPLEFT", 14 + (i - 1) * (bw + 6), -32)
 	b:SetScript("OnClick", function()
 		ThreatTintDB.role = r[1]
 		if r[1] == "auto" then autoTank = TT.AutoTank() end
@@ -425,16 +465,20 @@ for i, r in ipairs(ROLES) do
 	end)
 	roleBtns[r[1]] = b
 end
-local roleNote = Text(win, "GameFontDisableSmall", 22, -146, 296)
+local roleNote = Text(c2, "GameFontDisableSmall", 14, -64, CW - 28)
+c2:SetHeight(86)
 
-local legendTitle = Text(win, "GameFontNormal", 22, -170)
+-- Colour legend + the steps strip
+local c3 = S.Card(win, "Colours", 12, S.Below(c2), CW)
+local legendTitle = c3.title
 local rows = {}
 for i = 1, 7 do
-	local sw = CreateFrame("Button", nil, win)
-	sw:SetSize(36, 14); sw:SetPoint("TOPLEFT", 24, -190 - (i - 1) * 22)
-	local border = sw:CreateTexture(nil, "BACKGROUND"); border:SetAllPoints(); border:SetColorTexture(0, 0, 0, 1)
+	local sw = CreateFrame("Button", nil, c3)
+	sw:SetSize(40, 16); sw:SetPoint("TOPLEFT", 14, -34 - (i - 1) * 24)
+	S.Border(sw, 0, 0, 0, 1)
 	sw.tex = sw:CreateTexture(nil, "ARTWORK"); sw.tex:SetPoint("TOPLEFT", 1, -1); sw.tex:SetPoint("BOTTOMRIGHT", -1, 1)
-	sw.text = Text(win, "GameFontHighlightSmall", 68, -190 - (i - 1) * 22, 250)
+	local hl = sw:CreateTexture(nil, "HIGHLIGHT"); hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.25)
+	sw.text = Text(c3, "GameFontHighlightSmall", 64, -36 - (i - 1) * 24, CW - 78)
 	sw:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:AddLine("Click to change this colour"); GameTooltip:Show()
 	end)
@@ -442,20 +486,38 @@ for i = 1, 7 do
 	rows[i] = sw
 end
 
--- Strip: the colour steps, from far away to about to pull.
-local shadeTitle = Text(win, "GameFontDisableSmall", 22, -350)
+-- Strip: the colour steps, from far away to about to pull. It sits in its own frame, which
+-- moves up to just under the last colour row (DPS has 6 rows, tanks 7), so there's no gap.
+local sb = CreateFrame("Frame", nil, c3)
+sb:SetSize(CW, 72)
+local shadeTitle = Text(sb, "GameFontDisableSmall", 14, 0, CW - 28)
 local strip = {}
+local cell = math.floor((CW - 28) / 20)
 for i = 1, 20 do
-	local t = win:CreateTexture(nil, "ARTWORK")
-	t:SetSize(13, 10); t:SetPoint("TOPLEFT", 24 + (i - 1) * 13, -366)
+	local t = sb:CreateTexture(nil, "ARTWORK")
+	t:SetSize(cell - 1, 10); t:SetPoint("TOPLEFT", 14 + (i - 1) * cell, -18)
 	strip[i] = t
 end
-local farText = Text(win, "GameFontDisableSmall", 24, -378); farText:SetText("0%")
-local nearText = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-nearText:SetPoint("TOPRIGHT", win, "TOPLEFT", 24 + 20 * 13, -378); nearText:SetText("100%")
+local farText = Text(sb, "GameFontDisableSmall", 14, -32); farText:SetText("0%")
+local nearText = sb:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+nearText:SetPoint("TOPRIGHT", sb, "TOPLEFT", 14 + 20 * cell, -32); nearText:SetText("100%")
+S.Note(sb, "Click a colour to pick your own.", 14, -50)
 
-local resetBtn = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
-resetBtn:SetSize(110, 20); resetBtn:SetPoint("BOTTOMRIGHT", -18, 16); resetBtn:SetText("Reset colours")
+local foot = S.Footer(win, 40)
+local mmChk = S.Check(foot, "Show minimap button")
+mmChk:SetPoint("LEFT", 14, 0)
+local resetBtn = S.Button(foot, "Reset colours", 120, 24)
+resetBtn:SetPoint("RIGHT", -12, 0)
+
+-- Fits the colours card (and the window) to the number of colour rows shown.
+local function FitColours(n)
+	local sy = -34 - n * 24 - 6
+	sb:ClearAllPoints()
+	sb:SetPoint("TOPLEFT", 0, sy)
+	c3:SetHeight(-(sy - 50) + 22)
+	win:SetHeight(-S.Below(c3) + 40 + 2)
+end
+FitColours(7)
 
 local function Role() return TT.IsTank() and "tank" or "dps" end
 
@@ -482,19 +544,25 @@ local function PickColor(role, state)
 	end
 end
 
+-- the chosen role button looks selected (gold)
+local function Selected(b, on)
+	b.bg:SetColorTexture(on and 0.42 or 0.15, on and 0.31 or 0.15, on and 0.02 or 0.18, 1)
+	if on then S.Border(b, 0.85, 0.66, 0.1, 1) else S.Border(b, 0.26, 0.26, 0.31, 1) end
+end
+
 function win.Update()
 	local db = ThreatTintDB
 	local role = Role()
 	onChk:SetChecked(db.enabled)
 	shadeChk:SetChecked(db.shade)
+	risingChk:SetChecked(db.rising)
 	numChk:SetChecked(db.number)
-	for k, b in pairs(roleBtns) do
-		if b.LockHighlight then if db.role == k then b:LockHighlight() else b:UnlockHighlight() end end
-	end
+	mmChk:SetChecked(not (db.minimap and db.minimap.hide))
+	for k, b in pairs(roleBtns) do Selected(b, db.role == k) end
 	local _, why = TT.AutoTank()
 	roleNote:SetText(db.role == "auto" and ("Auto: you're " .. (role == "tank" and "tanking" or "not tanking")
 		.. (why and (" (" .. why .. ")") or "") .. ".") or ("Set by you: " .. (role == "tank" and "tank" or "DPS / healer") .. " colours."))
-	legendTitle:SetText(role == "tank" and "Colours while tanking:" or "Colours for DPS / healer:")
+	legendTitle:SetText(role == "tank" and "Colours while tanking" or "Colours for DPS / healer")
 	local legend = TT.LEGEND[role]
 	for i, sw in ipairs(rows) do
 		local row = legend[i]
@@ -507,7 +575,8 @@ function win.Update()
 			sw:Hide(); sw.text:Hide()
 		end
 	end
-	shadeTitle:SetText(db.shade and ("Colour steps for a mob on someone else, by your threat %" .. (role == "tank" and " (to take it back):" or " (to pull it):"))
+	FitColours(math.min(#legend, #rows))
+	shadeTitle:SetText(db.shade and ("Steps for a mob on someone else, by your threat %" .. (role == "tank" and " (to take it back):" or " (to pull it):"))
 		or "Colour steps are off: mobs on someone else stay one colour.")
 	for i, t in ipairs(strip) do
 		local c = TT.Color(role, db.shade and TT.Band(role, (i - 1) / 19 * 100) or "other")
@@ -515,11 +584,92 @@ function win.Update()
 	end
 end
 
-onChk:SetScript("OnClick", function(self) ThreatTintDB.enabled = self:GetChecked() and true or false; TT.UpdateAll(); win.Update() end)
+onChk:SetScript("OnClick", function(self)
+	ThreatTintDB.enabled = self:GetChecked() and true or false
+	TT.UpdateAll(); win.Update()
+	if TT.UpdateMinimapButton then TT.UpdateMinimapButton() end
+end)
 shadeChk:SetScript("OnClick", function(self) ThreatTintDB.shade = self:GetChecked() and true or false; TT.UpdateAll(); win.Update() end)
 numChk:SetScript("OnClick", function(self) ThreatTintDB.number = self:GetChecked() and true or false; TT.UpdateAll(); win.Update() end)
 resetBtn:SetScript("OnClick", function() ThreatTintDB.colors[Role()] = nil; TT.UpdateAll(); win.Update() end)
 win:SetScript("OnShow", function() win.Update() end)
+
+------------------------------------------------------------------------
+-- Minimap button: left-click settings, right-click on/off, drag to move
+------------------------------------------------------------------------
+local mm = CreateFrame("Button", "ThreatTintMinimapButton", Minimap)
+mm:SetSize(31, 31)
+mm:SetFrameStrata("MEDIUM")
+mm:SetFrameLevel(8)
+mm:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+mm:RegisterForDrag("LeftButton")
+mm:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+local mmBg = mm:CreateTexture(nil, "BACKGROUND")
+mmBg:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+mmBg:SetSize(20, 20); mmBg:SetPoint("TOPLEFT", 7, -5)
+local mmIcon = mm:CreateTexture(nil, "ARTWORK")
+mmIcon:SetTexture("Interface\\Icons\\Ability_Warrior_DefensiveStance")
+mmIcon:SetSize(17, 17); mmIcon:SetPoint("TOPLEFT", 7, -6)
+mmIcon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
+local mmBorder = mm:CreateTexture(nil, "OVERLAY")
+mmBorder:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+mmBorder:SetSize(53, 53); mmBorder:SetPoint("TOPLEFT")
+mm:Hide()
+
+local atan2 = math.atan2 or function(y, x) return math.atan(y, x) end
+local function PlaceButton()
+	local a = math.rad(ThreatTintDB.minimap.angle or 225)
+	local r = (Minimap:GetWidth() / 2) + 5
+	mm:ClearAllPoints()
+	mm:SetPoint("CENTER", Minimap, "CENTER", math.cos(a) * r, math.sin(a) * r)
+end
+function TT.UpdateMinimapButton()
+	local db = ThreatTintDB
+	if not (db and db.minimap) then return end
+	if db.minimap.hide then mm:Hide() else PlaceButton(); mm:Show() end
+	mmIcon:SetDesaturated(not db.enabled) -- grey while colouring is off
+end
+S.Group(mm, "ThreatTint", function() return ThreatTintDB and ThreatTintDB.minimap end, TT.UpdateMinimapButton) -- the shared minimap bag
+
+local function MinimapTip(self)
+	local db = ThreatTintDB
+	GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+	GameTooltip:AddLine("ThreatTint")
+	GameTooltip:AddLine(db.enabled and ("|cff33ff33On|r, " .. (TT.IsTank() and "tank" or "DPS / healer") .. " colours") or "|cffff4040Off|r", 1, 1, 1)
+	GameTooltip:AddLine("|cffffffffLeft-click|r  settings", 0.8, 0.8, 0.8)
+	GameTooltip:AddLine("|cffffffffRight-click|r  colouring on/off", 0.8, 0.8, 0.8)
+	GameTooltip:AddLine("|cffffffffDrag|r  move this button", 0.8, 0.8, 0.8)
+	GameTooltip:Show()
+end
+mm:SetScript("OnDragStart", function(self)
+	self:SetScript("OnUpdate", function()
+		local mx, my = Minimap:GetCenter()
+		local cx, cy = GetCursorPosition()
+		local s = Minimap:GetEffectiveScale()
+		ThreatTintDB.minimap.angle = math.deg(atan2(cy / s - my, cx / s - mx))
+		PlaceButton()
+	end)
+end)
+mm:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
+mm:SetScript("OnClick", function(self, button)
+	if button == "RightButton" then
+		ThreatTintDB.enabled = not ThreatTintDB.enabled
+		TT.UpdateAll()
+		TT.UpdateMinimapButton()
+		if win:IsShown() then win.Update() end
+		Print(ThreatTintDB.enabled and "on." or "off.")
+	else
+		win:SetShown(not win:IsShown())
+	end
+	MinimapTip(self)
+end)
+mm:SetScript("OnEnter", MinimapTip)
+mm:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+mmChk:SetScript("OnClick", function(self)
+	ThreatTintDB.minimap.hide = not self:GetChecked()
+	TT.UpdateMinimapButton()
+end)
 
 SLASH_THREATTINT1 = "/tint"
 SLASH_THREATTINT2 = "/threattint"
@@ -528,6 +678,13 @@ SlashCmdList.THREATTINT = function(msg)
 	local db = ThreatTintDB
 	if msg == "" then win:SetShown(not win:IsShown()); return end
 	if msg == "check" then TT.Check(); return end
+	if msg == "minimap" then
+		db.minimap.hide = not db.minimap.hide
+		TT.UpdateMinimapButton()
+		if win:IsShown() then win.Update() end
+		Print(db.minimap.hide and "minimap button hidden (/tint minimap brings it back)." or "minimap button shown.")
+		return
+	end
 	if msg == "tank" then db.role = "tank"
 	elseif msg == "dps" or msg == "healer" or msg == "heal" then db.role = "dps"
 	elseif msg == "auto" then db.role = "auto"; autoTank = TT.AutoTank()
@@ -536,6 +693,7 @@ SlashCmdList.THREATTINT = function(msg)
 	elseif msg == "toggle" then db.enabled = not db.enabled
 	end
 	TT.UpdateAll()
+	TT.UpdateMinimapButton()
 	if win:IsShown() then win.Update() end
 	Help()
 end
