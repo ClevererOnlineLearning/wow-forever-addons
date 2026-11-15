@@ -17,8 +17,10 @@ Logic\Econ.lua
 Logic\Budget.lua
 Logic\Rank.lua
 Logic\History.lua
+Logic\Discover.lua
 Logic\Build.lua
 Data\Opportunities.lua
 Data\Raids.lua
+Adapters\Scan.lua
 Gen\Quests.lua
 UI\Plan.lua

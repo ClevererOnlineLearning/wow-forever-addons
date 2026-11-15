@@ -3,6 +3,11 @@
 local _, ns = ...
 ns.Data = ns.Data or {}
 
+-- Items whose prices we always remember (history, staleness checks): common trade goods and seed items.
+-- Linen Cloth, Light/Heavy/Thick/Rugged Leather, Rugged Hide, Refined Deeprock Salt, Deeprock Salt,
+-- Mote of Unstable Magic, Cured Rugged Hide, Black Lotus, Arcane Crystal, Thorium Bar, Runecloth.
+ns.Data.Watch = { 2589, 2318, 4234, 4304, 8170, 8171, 15409, 8150, 274964, 15407, 13468, 12363, 12359, 14047 }
+
 -- Reputation ranks: 4 Neutral, 5 Friendly, 6 Honored, 7 Revered, 8 Exalted.
 ns.Data.Quests = {
 	{
