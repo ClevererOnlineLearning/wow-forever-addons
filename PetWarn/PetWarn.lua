@@ -1,6 +1,7 @@
 -- PetWarn: a gentle "Pet not attacking" reminder in the middle of the screen when you're in a
--- fight and your pet is idle, and a "Mend Pet!" reminder when its health drops. No sound. Only reads your own pet; every value is checked with
--- issecretvalue first, and if the game hides something the warning simply stays away.
+-- fight and your pet is idle, and a big "Mend Pet!" reminder when its health drops (sound optional,
+-- off unless you turn it on). Only reads your own pet; every value is checked with issecretvalue
+-- first, and if the game hides something the warning simply stays away.
 local _, ns = ...
 local PW = {}
 _G.PetWarn = PW
@@ -127,30 +128,59 @@ local MEND_RANKS = { 136, 3111, 3661, 3662, 13542, 13543, 13544, 27046, 48989, 4
 local MEND_ICON = "Interface\\Icons\\Ability_Hunter_MendPet"
 local GetSpellNameC = (C_Spell and C_Spell.GetSpellName) or function(id) return (GetSpellInfo(id)) end
 
+-- As big as "Pet not attacking", centred under it, bouncing and pulsing (1.4: it was easy to miss)
 local m = CreateFrame("Frame", "PetWarnMendFrame", UIParent)
-m:SetSize(200, 36)
+m:SetSize(260, 48)
 m:SetFrameStrata("HIGH")
-m:SetPoint("TOP", f, "BOTTOM", 0, -4)
+m:SetPoint("TOP", f, "BOTTOM", 0, -8)
 m:Hide()
-local mIcon = m:CreateTexture(nil, "ARTWORK")
-mIcon:SetSize(32, 32)
-mIcon:SetPoint("LEFT", 4, 0)
+local mHolder = CreateFrame("Frame", nil, m) -- the part that moves
+mHolder:SetAllPoints()
+local mIcon = mHolder:CreateTexture(nil, "ARTWORK")
+mIcon:SetSize(40, 40)
 mIcon:SetTexture(MEND_ICON)
 mIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-local mText = m:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-mText:SetPoint("LEFT", mIcon, "RIGHT", 8, 0)
+local mText = mHolder:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
 mText:SetText("Mend Pet!")
 mText:SetTextColor(0.35, 1, 0.35)
 mText:SetShadowOffset(2, -2)
-local mPct = m:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-mPct:SetPoint("LEFT", mText, "RIGHT", 6, 0)
-local pulse = m:CreateAnimationGroup()
+local mPct = mHolder:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+mPct:SetShadowOffset(1, -1)
+-- icon + text + % centred as one group
+local function CentreMend()
+	local w = 40 + 10 + (mText:GetStringWidth() or 120) + ((mPct:GetText() or "") ~= "" and (8 + (mPct:GetStringWidth() or 40)) or 0)
+	mIcon:ClearAllPoints()
+	mIcon:SetPoint("LEFT", mHolder, "CENTER", -w / 2, 0)
+	mText:ClearAllPoints()
+	mText:SetPoint("LEFT", mIcon, "RIGHT", 10, 0)
+	mPct:ClearAllPoints()
+	mPct:SetPoint("LEFT", mText, "RIGHT", 8, 0)
+end
+CentreMend()
+local pulse = mHolder:CreateAnimationGroup()
 pulse:SetLooping("BOUNCE")
 local fade = pulse:CreateAnimation("Alpha")
 fade:SetFromAlpha(1)
-fade:SetToAlpha(0.45)
-fade:SetDuration(0.7)
+fade:SetToAlpha(0.4)
+fade:SetDuration(0.6)
 fade:SetSmoothing("IN_OUT")
+local grow = pulse:CreateAnimation("Scale")
+if grow.SetScaleFrom then grow:SetScaleFrom(1, 1); grow:SetScaleTo(1.12, 1.12) else grow:SetScale(1.12, 1.12) end
+grow:SetOrigin("CENTER", 0, 0)
+grow:SetDuration(0.6)
+grow:SetSmoothing("IN_OUT")
+
+-- Optional sound when the reminder appears: only when the game shows the pet's health (with the
+-- health hidden PetWarn can't know it's low, so it can't know when to play it). At most every 15 s.
+local lastSound = -100
+local function MendSound()
+	if not (PetWarnDB and PetWarnDB.mendSound) then return end
+	local now = GetTime()
+	if now - lastSound < 15 then return end
+	lastSound = now
+	pcall(PlaySound, (SOUNDKIT and SOUNDKIT.RAID_WARNING) or 8959, "Master")
+end
+PW.MendSound = MendSound
 
 function PW.KnowsMend()
 	for _, id in ipairs(MEND_RANKS) do
@@ -207,7 +237,11 @@ local function ShowMend(on, pct, color)
 		mText:SetTextColor(0.35, 1, 0.35, 1)
 		mPct:SetText(pct and ("%d%%"):format(math.floor(pct + 0.5)) or "")
 	end
-	if not m:IsShown() then m:Show(); pulse:Play() end
+	CentreMend()
+	if not m:IsShown() then
+		m:Show(); pulse:Play()
+		if pct and not moving then MendSound() end
+	end
 end
 
 function PW.CheckMend()
@@ -256,6 +290,7 @@ ev:SetScript("OnEvent", function(self, event, unit)
 		PetWarnDB = db
 		if db.enabled == nil then db.enabled = true end
 		if db.mendAt == nil then db.mendAt = 60 end -- Mend Pet reminder below this % (false = off)
+		if db.mendSound == nil then db.mendSound = false end
 		if db.mendAt and (type(db.mendAt) ~= "number" or db.mendAt < 5 or db.mendAt > 95) then db.mendAt = 60 end
 		Place()
 		self:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -342,6 +377,10 @@ SlashCmdList.PETWARN = function(msg)
 		PW.CheckMend()
 		Print(db.mendAt and ("Mend Pet reminder when your pet is below |cffffffff%d%%|r health. |cffffffff/petwarn mend 50|r to change, |cffffffff/petwarn mend off|r to turn off."):format(db.mendAt)
 			or "Mend Pet reminder |cffff4040off|r. |cffffffff/petwarn mend on|r to turn it back on.")
+	elseif msg == "sound" or msg == "sound on" or msg == "sound off" then
+		if msg == "sound" then db.mendSound = not db.mendSound else db.mendSound = msg == "sound on" end
+		Print("Mend Pet sound " .. (db.mendSound and "|cff20ff20on|r (plays when the reminder appears, when the game shows your pet's health)" or "|cffff4040off|r") .. ".")
+		if db.mendSound then lastSound = -100; MendSound() end
 	elseif msg == "test" then
 		if moving then return end
 		ShowWarning(true)
@@ -351,6 +390,7 @@ SlashCmdList.PETWARN = function(msg)
 	else
 		Print(("is %s. Shows \"Pet not attacking\" when you're in a fight and your pet isn't."):format(db.enabled and "|cff20ff20on|r" or "|cffff4040off|r"))
 		Print("|cffffffff/petwarn test|r  preview   |cffffffff/petwarn move|r  move it   |cffffffff/petwarn reset|r  centre it   |cffffffff/petwarn off|r / |cffffffffon|r")
-		Print("|cffffffff/petwarn mend 60|r  Mend Pet reminder below that health % (" .. (db.mendAt and (db.mendAt .. "%") or "off") .. ")   |cffffffff/petwarn more|r  our other add-ons")
+		Print("|cffffffff/petwarn mend 60|r  Mend Pet reminder below that health % (" .. (db.mendAt and (db.mendAt .. "%") or "off") .. ")   |cffffffff/petwarn sound|r  Mend Pet sound (" .. (db.mendSound and "on" or "off") .. ")")
+		Print("|cffffffff/petwarn more|r  our other add-ons")
 	end
 end
