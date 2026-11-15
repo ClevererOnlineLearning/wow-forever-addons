@@ -11,3 +11,5 @@
 
 Skin.lua
 Core.lua
+Adapters\Prices.lua
+Adapters\Char.lua
