@@ -6,10 +6,12 @@ ns.Budget = B
 local G = 10000
 
 function B.Compute(gold, settings)
-	settings = settings or {}
+	local raw = settings or {}
+	settings = {}
+	for k, v in pairs(raw) do settings[k] = type(v) == "number" and math.max(v, 0) or v end -- never negative
 	gold = math.max(gold or 0, 0)
 	local b = {}
-	b.reserve = settings.reserve or math.floor(math.max(0.175 * gold, math.min(5 * G, 0.5 * gold)))
+	b.reserve = math.min(settings.reserve or math.floor(math.max(0.175 * gold, math.min(5 * G, 0.5 * gold))), gold)
 	b.available = math.max(gold - b.reserve, 0)
 	b.quick = settings.quick or math.floor(0.625 * b.available)
 	b.raid = settings.raid or math.floor(0.375 * b.available)

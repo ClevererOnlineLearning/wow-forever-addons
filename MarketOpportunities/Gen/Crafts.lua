@@ -115,3 +115,13 @@ function ns.Path.Blocks(char, priceOf)
 	table.sort(blocks, function(a, b) return a.name < b.name end)
 	return blocks
 end
+
+-- The same, cached: recomputed only when the epoch changes (new scan, refreshed prices, recipes,
+-- skill-ups, or every 10 minutes), not on every gold change (review #9)
+local cache = { epoch = nil, blocks = nil }
+function ns.Path.CachedBlocks(char, priceOf, epoch)
+	if cache.epoch ~= epoch or not cache.blocks then
+		cache.blocks, cache.epoch = ns.Path.Blocks(char, priceOf), epoch
+	end
+	return cache.blocks
+end

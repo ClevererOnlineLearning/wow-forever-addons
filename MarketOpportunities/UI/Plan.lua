@@ -131,7 +131,7 @@ local function Numbers(e)
 	if e.returnClass == "guaranteed" then
 		return "+" .. ns.Money(e.net)
 	end
-	local lo, hi = ns.Money(e.netLow), ns.Money(e.netHigh)
+	local lo, hi = ns.MoneyShort(e.netLow), ns.MoneyShort(e.netHigh)
 	local s = (e.netLow == e.netHigh) and ("about +" .. hi) or (lo .. " to +" .. hi)
 	if e.pSell then s = s .. ", sells ~" .. math.floor(e.pSell * 100 + 0.5) .. "%" end
 	return s
@@ -230,7 +230,7 @@ function UI.TrackText(r)
 	elseif st == "unconfirmed" then
 		return "Result unconfirmed (couldn't match the purchase or the sale)"
 	elseif st == "expired" then
-		return "Tracking ended: nothing sold within 14 days"
+		return "Tracking ended: no sale matched to this tip within 14 days"
 	elseif st == "abandoned" then
 		return "Stopped tracking"
 	end
@@ -277,8 +277,27 @@ local function Header(plan, ctx)
 		"GameFontDisableSmall", 0.6, 0.6, 0.65)
 end
 
+UI.epoch = 0
+for _, ev in ipairs({ "SCAN_DONE", "DISCOVER_DONE", "ITEM_REFRESHED", "RECIPES_CHANGED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE" }) do
+	ns.On(ev, function() UI.epoch = UI.epoch + 1 end)
+end
+
+local BuildInner
 function UI.Build()
 	if not ns.cdb then return end
+	local t0 = debugprofilestop and debugprofilestop() or 0
+	local ok, err = pcall(BuildInner)
+	UI.lastBuildMs = (debugprofilestop and debugprofilestop() or 0) - t0
+	if not ok then
+		-- never leave the window broken (review #10): show what went wrong instead
+		Reset()
+		Line("Tonight's plan couldn't be built: " .. tostring(err), "GameFontHighlight", 1, 0.5, 0.3)
+		Line("Please tell good mens (Mephz) what you were doing. /reload usually clears it.", "GameFontDisableSmall", 0.8, 0.8, 0.8)
+		content:SetHeight(-cursor + 10)
+	end
+end
+
+BuildInner = function()
 	local ctx = Context()
 	local plan = ns.BuildPlan(ctx, Settings())
 	UI.lastPlan = plan
@@ -302,7 +321,7 @@ function UI.Build()
 	if #plan.prep == 0 then Line("No raid prep tips yet.", "GameFontDisableSmall", 0.7, 0.7, 0.7) end
 	for _, e in ipairs(plan.prep) do Tip(e, ctx.priceOf) end
 
-	local okB, blocks = pcall(ns.Path.Blocks, ctx.char, ctx.priceOf)
+	local okB, blocks = pcall(ns.Path.CachedBlocks, ctx.char, ctx.priceOf, UI.epoch .. ":" .. math.floor(ctx.now / 600))
 	if okB and #blocks > 0 then
 		Section("Professions")
 		for _, b in ipairs(blocks) do
@@ -363,7 +382,7 @@ function UI.Refresh(now)
 	if now then UI.Build(); return end
 	if pending then return end
 	pending = true
-	C_Timer.After(1, function()
+	C_Timer.After(ns.Scan and ns.Scan.ahOpen and 3 or 1, function() -- buying at the AH changes gold often
 		pending = false
 		if win:IsShown() and not InCombatLockdown() then UI.Build() elseif InCombatLockdown() then combatPending = true end
 	end)
@@ -522,6 +541,7 @@ local function Slash(msg)
 	if msg == "recipes stop" then ns.Recipes.Stop(); ns.Print("recipe search stopped (it carries on after /reload)."); return end
 	if msg == "recipes rebuild" then ns.Recipes.Rebuild(); ns.Print("searching all recipes again in the background."); return end
 	if msg == "settings" or msg == "options" then UI.ToggleSettings(); return end
+	if msg == "timing" then ns.Print(("last plan build took %.1f ms"):format(UI.lastBuildMs or 0)); return end
 	if msg == "" then UI.Toggle(); return end
 	ns.Print("/mo  open tonight's plan   ·   /mo settings   ·   /mo 30 or /mo 60   ·   /mo price <itemID>   ·   /mo recipes [bench | stop | rebuild]")
 end

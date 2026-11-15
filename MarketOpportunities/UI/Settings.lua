@@ -105,7 +105,7 @@ save:SetScript("OnClick", function()
 	for _, r in ipairs(rows) do
 		local n, d = r.name:GetText(), r.date:GetText()
 		if n and n ~= "" then
-			if d ~= "" and not d:match("^%d%d%d%d%-%d%d%-%d%d$") then bad = n end
+			if d ~= "" and not ns.Data.ValidDate(d) then bad = n end
 			list[#list + 1] = { name = n, date = d ~= "" and d or nil, status = r.status:GetChecked() and "assumed" or "announced", source = "you" }
 		end
 	end

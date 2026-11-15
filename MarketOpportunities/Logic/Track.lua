@@ -19,7 +19,8 @@ function T.Accept(eval, totals, now, names)
 		end
 	end
 	return {
-		id = c.id, kind = c.kind, title = c.title, questName = c.questName, sellYours = c.sellYours,
+		id = c.id, kind = c.kind, title = c.title, questName = c.questName,
+		needs = c.kind == "quest" and c.inputs or nil,
 		items = items, preOwned = preOwned, acceptedAt = now, expiresAt = now + WINDOW,
 		predicted = { net = eval.net, netLow = eval.netLow, netHigh = eval.netHigh, capital = eval.capital },
 		units = {}, sales = {}, money = 0, state = "open",
@@ -49,8 +50,9 @@ function T.OnSold(r, inv)
 	if not id then return false end
 	local avail = 0
 	for _, u in ipairs(r.units) do if u.itemID == id then avail = avail + u.left end end
-	if avail == 0 and not r.sellYours then return false end -- from units you already owned
-	if inv.qty > avail then
+	if avail == 0 then return false end -- nothing bought for this tip yet: these were your own
+	if (r.preOwned[id] or 0) > 0 or inv.qty > avail then
+		-- you also had some before (or sold more than the tip bought): can't tell whose units sold
 		r.ambiguous = true -- more sold than this tip bought: can't tell which units these were
 		table.insert(r.sales, { itemID = id, qty = inv.qty, amount = inv.amount, t = inv.t })
 		return true
@@ -89,7 +91,15 @@ function T.State(r, now)
 	if r.ambiguous or (r.unknownCost and (#r.sales > 0 or (r.questDone or 0) > 0)) then return "unconfirmed" end
 	local bought, sold = totals(r)
 	if r.kind == "quest" then
-		if (r.questDone or 0) > 0 then return "realised" end
+		if (r.questDone or 0) > 0 then
+			-- realised only when the items handed in were bought for this tip at a known cost (spec 19.6)
+			for _, need in ipairs(r.needs or {}) do
+				local got = 0
+				for _, u in ipairs(r.units) do if u.itemID == need.itemID and u.cost then got = got + u.qty end end
+				if got < need.qty then return "unconfirmed" end
+			end
+			return "realised"
+		end
 	elseif sold > 0 then
 		return sold >= bought and "realised" or "partial"
 	end
@@ -102,7 +112,7 @@ function T.Result(r)
 	if r.abandoned or r.ambiguous or r.unknownCost then return nil end
 	local bought, sold, _, proceeds = totals(r)
 	if r.kind == "quest" then
-		if (r.questDone or 0) == 0 then return nil end
+		if (r.questDone or 0) == 0 or T.State(r, r.acceptedAt) == "unconfirmed" then return nil end
 		local _, _, cost = totals(r)
 		return { profit = r.money - cost, sold = 0, bought = bought }
 	end

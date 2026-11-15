@@ -59,11 +59,12 @@ function K.Accept(eval)
 	local r = ns.Track.Accept(eval, totals, time(), names)
 	local list = K.Records()
 	table.insert(list, r)
-	-- keep the last 40 and nothing older than 30 days
+	-- forget tips older than 30 days, then keep the newest 40 (review #3: never the one just added)
 	local now = time()
 	for i = #list, 1, -1 do
-		if #list > 40 or now - (list[i].acceptedAt or 0) > 30 * 86400 then table.remove(list, i) end
+		if now - (list[i].acceptedAt or 0) > 30 * 86400 then table.remove(list, i) end
 	end
+	while #list > 40 do table.remove(list, 1) end
 	snapshot()
 	ns.Fire("TRACK_CHANGED")
 	return r
@@ -74,21 +75,29 @@ function K.Abandon(id)
 	if r then ns.Track.Abandon(r); ns.Fire("TRACK_CHANGED") end
 end
 
--- Gold drops (a purchase in progress)
-local lastMoney, lastDrop, dropAt = nil, 0, 0
+-- Gold changes since the last bag check (review #5): a purchase is matched only when exactly one
+-- gold drop and no gold gain happened together with exactly one tracked item increasing.
+local lastMoney, drops, gains, changeAt = nil, {}, 0, 0
 ns.On("PLAYER_MONEY", function()
 	local m = call(GetMoney) or 0
-	if lastMoney and m < lastMoney then lastDrop, dropAt = lastMoney - m, GetTime() end
+	if lastMoney then
+		if m < lastMoney then drops[#drops + 1] = lastMoney - m elseif m > lastMoney then gains = gains + 1 end
+		changeAt = GetTime()
+	end
 	lastMoney = m
 end)
 ns.On("PLAYER_LOGIN", function() lastMoney = call(GetMoney); snapshot() end)
+
+local mailOpen = false -- items taken from the mailbox are covered by "bought" invoices instead
+ns.On("MAIL_SHOW", function() mailOpen = true end)
+ns.On("MAIL_CLOSED", function() mailOpen = false; snapshot() end)
 
 local recentBuys = {} -- itemID..qty -> time (so a mailed invoice for the same purchase isn't counted twice)
 
 ns.On("BAG_UPDATE_DELAYED", function()
 	if not ns.cdb then return end
 	local recs = open()
-	if #recs == 0 then return end
+	if #recs == 0 then drops, gains = {}, 0; return end
 	local before = counts
 	snapshot()
 	local up = {}
@@ -96,24 +105,43 @@ ns.On("BAG_UPDATE_DELAYED", function()
 		local d = n - (before[id] or n)
 		if d > 0 then up[#up + 1] = { id = id, qty = d } end
 	end
-	if #up ~= 1 or lastDrop <= 0 or GetTime() - dropAt > MATCH_SECONDS then return end
-	local u = up[1]
-	local unit = math.floor(lastDrop / u.qty + 0.5)
-	lastDrop = 0
-	for _, r in ipairs(recs) do -- the oldest open tip with this item gets the units
-		if r.items[u.id] then
-			ns.Track.OnAcquired(r, u.id, u.qty, unit, time())
-			recentBuys[u.id .. ":" .. u.qty] = time()
-			ns.Fire("TRACK_CHANGED")
-			return
+	local matched = #up == 1 and #drops == 1 and gains == 0 and GetTime() - changeAt <= MATCH_SECONDS
+	local drop = drops[1]
+	drops, gains = {}, 0
+	if #up == 0 or mailOpen then return end
+	for _, u in ipairs(up) do
+		local unit = matched and math.floor(drop / u.qty + 0.5) or nil -- nil: cost unknown, result unconfirmed
+		for _, r in ipairs(recs) do -- the oldest open tip with this item gets the units
+			if r.items[u.id] then
+				ns.Track.OnAcquired(r, u.id, u.qty, unit, time())
+				if unit then recentBuys[u.id .. ":" .. u.qty] = time() end
+				break
+			end
 		end
 	end
+	ns.Fire("TRACK_CHANGED")
 end)
 
 -- Mail invoices: "bought" (cost known) and "sold" (proceeds after the cut)
-local function invoiceKey(i)
-	local _, _, sender, subject, money, _, daysLeft = call(GetInboxHeaderInfo, i)
-	return tostring(sender) .. "|" .. tostring(subject) .. "|" .. tostring(money) .. "|" .. math.floor((daysLeft or 0) * 1440)
+-- Stable identity for an invoice (review #2): what it says, plus when it expires to within 2 hours
+-- (daysLeft falls every second, so it can't be part of the key itself)
+local function invoiceKey(i, kind, itemName, bid, qty)
+	local _, _, sender, subject, _, _, daysLeft = call(GetInboxHeaderInfo, i)
+	local expires = time() + (daysLeft or 0) * 86400
+	return table.concat({ tostring(kind), tostring(itemName), tostring(qty), tostring(bid), tostring(sender), tostring(subject) }, "|"), expires
+end
+
+local function seenBefore(seen, key, expires)
+	local e = seen[key]
+	if type(e) == "table" then
+		for _, x in ipairs(e) do if math.abs(x - expires) <= 7200 then return true end end
+	end
+	return false
+end
+
+local function rememberInvoice(seen, key, expires)
+	if type(seen[key]) ~= "table" then seen[key] = {} end
+	table.insert(seen[key], expires)
 end
 
 function K.ReadInvoices()
@@ -126,9 +154,9 @@ function K.ReadInvoices()
 	for i = 1, n do
 		local kind, itemName, _, bid, buyout, deposit, consignment, _, _, qty = call(GetInboxInvoiceInfo, i)
 		if kind and itemName then
-			local key = invoiceKey(i)
-			if not seen[key] then
-				seen[key] = time()
+			local key, expires = invoiceKey(i, kind, itemName, bid or buyout, qty)
+			if not seenBefore(seen, key, expires) then
+				rememberInvoice(seen, key, expires)
 				local amount = (bid or buyout or 0)
 				qty = qty or 1
 				for _, r in ipairs(recs) do
@@ -149,9 +177,14 @@ function K.ReadInvoices()
 			end
 		end
 	end
-	-- forget old keys
-	local now, keys = time(), 0
-	for k, t in pairs(seen) do if now - t > 40 * 86400 then seen[k] = nil else keys = keys + 1 end end
+	-- forget invoices whose mail has expired
+	local now = time()
+	for k, list in pairs(seen) do
+		if type(list) ~= "table" then seen[k] = nil else
+			for j = #list, 1, -1 do if list[j] < now - 86400 then table.remove(list, j) end end
+			if #list == 0 then seen[k] = nil end
+		end
+	end
 	ns.Fire("TRACK_CHANGED")
 end
 ns.On("MAIL_INBOX_UPDATE", function() pcall(K.ReadInvoices) end)

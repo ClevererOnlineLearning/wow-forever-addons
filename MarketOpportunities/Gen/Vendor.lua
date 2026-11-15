@@ -73,9 +73,10 @@ ns.Gen.Register("vendor", function(ctx)
 			source = source,
 		}
 	end
-	for id, v in pairs(ns.db and ns.db.vendors or {}) do
-		consider(id, v, "Vendor you visited")
-	end
+	local seenList = {}
+	for id, v in pairs(ns.db and ns.db.vendors or {}) do seenList[#seenList + 1] = { id = id, v = v } end
+	if #seenList > 300 then table.sort(seenList, function(a, b) return (a.v.seenAt or 0) > (b.v.seenAt or 0) end) end
+	for i = 1, math.min(#seenList, 300) do consider(seenList[i].id, seenList[i].v, "Vendor you visited") end
 	-- ItemTree vendor prices for the watch-list and items we keep history for
 	local ids = {}
 	for _, id in ipairs(ns.Data.Watch or {}) do ids[#ids + 1] = id end

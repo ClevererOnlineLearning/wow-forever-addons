@@ -55,7 +55,8 @@ ns.Gen.Register("community", function(ctx)
 						title = "Hand in: " .. r.questName, why = r.summary, inputs = inputs, outputs = {},
 						money = r.reward and r.reward.money or 0, handsOnMinutes = 10, waitDays = 0,
 						requires = { level = r.minLevel, faction = r.faction ~= "both" and r.faction or nil },
-						unverified = unverified, payoutVerified = (#(r.sources or {}) >= 2 and not r.conflict) or false,
+						-- a community reward is never a sure payout until you've seen it yourself (spec 7.1)
+						unverified = unverified, payoutVerified = false,
 						source = src,
 					}
 				else

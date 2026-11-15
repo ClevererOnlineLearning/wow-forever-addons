@@ -20,13 +20,22 @@ local function daysFromCivil(y, m, d)
 end
 ns.Data.DaysFromCivil = daysFromCivil
 
+-- A real calendar date "YYYY-MM-DD" (month 1-12, day within the month)
+function ns.Data.ValidDate(s)
+	local y, m, d = tostring(s or ""):match("^(%d%d%d%d)-(%d%d)-(%d%d)$")
+	y, m, d = tonumber(y), tonumber(m), tonumber(d)
+	if not (y and m and d) or m < 1 or m > 12 or d < 1 then return false end
+	local dim = { 31, (y % 4 == 0 and (y % 100 ~= 0 or y % 400 == 0)) and 29 or 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
+	return d <= dim[m]
+end
+
 -- The next dated raid opening on or after now (unix seconds): {name, date, days, status}
 function ns.Data.NextRaid(now, calendar)
 	local today = math.floor(now / 86400)
 	local best
 	for _, r in ipairs(calendar or ns.Data.RaidCalendar) do
 		local y, m, d = tostring(r.date or ""):match("^(%d+)-(%d+)-(%d+)$")
-		if y then
+		if y and ns.Data.ValidDate(r.date) then
 			local days = daysFromCivil(tonumber(y), tonumber(m), tonumber(d)) - today
 			if days >= 0 and (not best or days < best.days) then
 				best = { name = r.name, date = r.date, days = days, status = r.status }

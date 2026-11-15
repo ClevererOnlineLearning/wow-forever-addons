@@ -100,6 +100,7 @@ if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and
 		local ok, _, _, _, _, _, classID = pcall(C_Item.GetItemInfoInstant, data.id)
 		if not (ok and classID == 9) then return end -- recipe items only
 		local lines, name = {}, tt:GetName()
+		if not name then return end
 		for i = 1, math.min(tt:NumLines() or 0, 20) do
 			local fs = _G[name .. "TextLeft" .. i]
 			local t = fs and fs:GetText()
