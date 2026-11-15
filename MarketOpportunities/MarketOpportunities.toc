@@ -13,3 +13,6 @@ Skin.lua
 Core.lua
 Adapters\Prices.lua
 Adapters\Char.lua
+Logiccon.lua
+Logic\Budget.lua
+Logic\Rank.lua
