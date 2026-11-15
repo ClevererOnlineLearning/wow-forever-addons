@@ -518,3 +518,45 @@ Offline tests (Lua logic run with lupa on fixtures) and in-game checks:
 
 Internal code structure, file split, SavedVariables layout details, exact UI wording and colours
 within Skin.lua, test fixtures, and tuning constants not marked [call].
+
+## 19. Approval corrections (revision 3, 2026-11-15) — these override earlier sections where they differ
+
+1. **Correlated price sources.** Sources are grouped by where their data comes from. TSM Market,
+   Recent, Historical and Min Buyout are one group (`tsmRealm`: the same realm scan data); TSM Region
+   Market is a second, *related* group (`tsmRegion`: other realms, not this market); Auctionator's
+   price is `atr`; this add-on's own observations over at least two separate days are `own`. A
+   benchmark is **credible** only when at least two groups agree within 30% and at least one of them
+   is realm-local (`tsmRealm`, `atr` or `own`). Agreement between values in one group never counts as
+   confirmation. `atr` and `own` both come from this player's scans, so when they are the only two
+   groups they count as one.
+2. **Region liquidity is an indicator, not proof.** Region sale rate and sold-per-day are discounted
+   until we have our own evidence for the item: `pSell = regionSaleRate × trust` and demand =
+   `realmShare × regionSoldPerDay × trust`, with `trust = 0.5` and no own evidence. Own evidence
+   (realised sales from tracking, Stage 6) raises it with shrinkage `trust = 0.5 + 0.5 × n/(n+5)`.
+   An item counts as non-thin for "expected" only when region sold-per-day ≥ 2 (not 1) until own
+   evidence exists. Confidence for region-only evidence is capped at 0.6.
+3. **Guaranteed payout ≠ guaranteed opportunity.** `guaranteed` describes the *payout* (quest gold,
+   vendor price) only. Each evaluation also lists the **checks** still needed to act on it: the AH
+   listing is still there at that price (always, for AH inputs; worded "scan is N min old" when the
+   scan is older than 15 min), quest eligibility not readable from the client (prerequisite quests,
+   reputation not yet read), vendor stock. The UI says "Sure payout — check first: …"; with any
+   check open, ranking confidence is 0.85 instead of 1.0.
+4. **Auctionator fallback is per item and per field.** When TSM is installed but returns nil, 0 or
+   unusable values for an item, the Auctionator price is used for that item (`source = "Auctionator"`,
+   or `"TSM+Auctionator"` when both contribute). The status line reports when TSM is installed but
+   has no data.
+5. **Recipe discovery must never stutter.** The walk is benchmarked first (`/mo recipes bench`
+   measures the per-ID cost on 10,000 IDs and projects the total), runs time-sliced at ≤ 2 ms per
+   frame, pauses in combat, saves its cursor so it resumes after `/reload` or logout, can be
+   cancelled (`/mo recipes stop` and a button), and is cached per client build. The primary
+   discovery path is `C_TradeSkillUI.GetAllRecipeIDs()` when a profession window is opened (if it
+   returns unlearned recipes in Forever); the ID walk covers only the ranges where recipes exist
+   (1–60,000 and 1,000,000–1,500,000) and is dropped if the benchmark projects more than 10 minutes
+   of background time.
+6. **Realised profit needs matched costs and proceeds.** A tracked result is "realised" only for
+   units whose acquisition cost is known (a purchase matched by a gold decrease and a bag increase
+   of that item together, with no other change in the same window, or a stated vendor price) *and*
+   whose sale is matched by an invoice. Anything else is shown as "Result unconfirmed", never as
+   profit.
+7. **Independent reviews** at two milestones: after Stage 2 and after Stage 8.
+8. No API or feature is called "working in Forever" until it has been tested in the client.
