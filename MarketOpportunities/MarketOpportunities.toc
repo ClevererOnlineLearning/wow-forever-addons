@@ -13,6 +13,11 @@ Skin.lua
 Core.lua
 Adapters\Prices.lua
 Adapters\Char.lua
-Logiccon.lua
+Logic\Econ.lua
 Logic\Budget.lua
 Logic\Rank.lua
+Logic\Build.lua
+Data\Opportunities.lua
+Data\Raids.lua
+Gen\Quests.lua
+UI\Plan.lua
