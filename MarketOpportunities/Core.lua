@@ -24,6 +24,13 @@ function ns.Money(copper)
 	return sign .. table.concat(parts, " ")
 end
 
+-- Rounded for reading: whole gold from 10g, else gold and silver
+function ns.MoneyShort(copper)
+	copper = copper or 0
+	if math.abs(copper) >= 100000 then return ns.Money(math.floor(copper / 10000 + 0.5) * 10000) end
+	return ns.Money(math.floor(copper / 100 + 0.5) * 100)
+end
+
 ------------------------------------------------------------------------
 -- Event bus. WoW events are registered on one frame (pcall: our own event names such as
 -- SCAN_DONE are not WoW events and RegisterEvent would refuse them).

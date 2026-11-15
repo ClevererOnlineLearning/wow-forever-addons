@@ -66,7 +66,10 @@ def test_toc_loads_and_window_builds():
     assert e.g._textsContaining("Hand in: More Unstable Magic") == 1
     assert e.g._textsContaining("Sure payout") == 1
     assert e.g._textsContaining("Raids in 24 days") <= 1  # depends on the real clock
-    assert e.g._textsContaining("Leatherworking 170") == 1
+    assert e.g._textsContaining("Leatherworking 170") == 2  # header and profession block
+    assert e.g._textsContaining("At 250: Salt Shaker cooldown") == 1
+    assert e.g._textsContaining("Profession tips unavailable") == 0
+    assert e.g._textsContaining("Budget 50g quick, 30g raids") == 1  # budgets rounded for reading
 
 
 def test_slash_registered():

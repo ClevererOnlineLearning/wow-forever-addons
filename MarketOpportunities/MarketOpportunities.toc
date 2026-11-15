@@ -18,6 +18,7 @@ Logic\Budget.lua
 Logic\Rank.lua
 Logic\History.lua
 Logic\Discover.lua
+Logic\Path.lua
 Logic\Build.lua
 Data\Opportunities.lua
 Data\Raids.lua
@@ -28,5 +29,6 @@ Adapters\Recipes.lua
 Adapters\Skill.lua
 Gen\Quests.lua
 Gen\Vendor.lua
+Gen\Crafts.lua
 UI\Plan.lua
 UI\AHPanel.lua

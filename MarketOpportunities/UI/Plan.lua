@@ -184,6 +184,7 @@ local function Context()
 		char = ns.Char.Get(), priceOf = priceOf, now = now, standing = ns.Char.Standing,
 		scan = scan, scanAgeMin = scan and scan.scannedAt and math.floor((now - scan.scannedAt) / 60) or nil,
 		deposit = ns.Scan and ns.Scan.Deposit, stale = UI.TsmStale(now), fresh = ns.Scan and ns.Scan.Fresh,
+		sessionMinutes = Settings().sessionMinutes, realmShare = Settings().realmShare, announce = true,
 	}
 end
 
@@ -195,8 +196,8 @@ local function Header(plan, ctx)
 	Line(#profs > 0 and table.concat(profs, " · ") or (ch.professionsKnown and "No professions" or "Professions: reading..."),
 		"GameFontHighlight", 0.9, 0.9, 0.9)
 	local b = plan.budget
-	Line("Gold " .. ns.Money(ch.gold) .. "   ·   Budget " .. ns.Money(b.quick) .. " quick, " .. ns.Money(b.raid) ..
-		" raids   ·   keeping " .. ns.Money(b.reserve), "GameFontHighlightSmall", 0.85, 0.85, 0.85)
+	Line("Gold " .. ns.MoneyShort(ch.gold) .. "   ·   Budget " .. ns.MoneyShort(b.quick) .. " quick, " .. ns.MoneyShort(b.raid) ..
+		" raids   ·   keeping " .. ns.MoneyShort(b.reserve), "GameFontHighlightSmall", 0.85, 0.85, 0.85)
 	local r = ns.Data.NextRaid(ctx.now)
 	if r then
 		local m = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" }
@@ -241,6 +242,41 @@ function UI.Build()
 	Line("Your raid prep", "GameFontNormal", 0.9, 0.9, 0.9)
 	if #plan.prep == 0 then Line("No raid prep tips yet.", "GameFontDisableSmall", 0.7, 0.7, 0.7) end
 	for _, e in ipairs(plan.prep) do Tip(e, ctx.priceOf) end
+
+	local okB, blocks = pcall(ns.Path.Blocks, ctx.char, ctx.priceOf)
+	if okB and #blocks > 0 then
+		Section("Professions")
+		for _, b in ipairs(blocks) do
+			Line(b.name .. " " .. b.rank .. (b.max and ("/" .. b.max) or ""), "GameFontNormal", 0.9, 0.9, 0.9)
+			if #b.milestones > 0 then
+				for _, m in ipairs(b.milestones) do
+					Line("At " .. m.rank .. ": " .. m.text, "GameFontHighlightSmall", 0.85, 0.85, 0.85, PAD + 8)
+				end
+			else
+				Line("No milestones known yet.", "GameFontDisableSmall", 0.7, 0.7, 0.7, PAD + 8)
+			end
+			local p, cov = b.path, b.coverage or {}
+			if p and #p.steps > 0 then
+				local first = p.steps[1]
+				local r = ns.Recipes.Get(first.spellID)
+				Line(p.label:sub(1, 1):upper() .. p.label:sub(2) .. " to " .. b.target .. ": about " .. ns.Money(p.total) ..
+					(p.gaps > 0 and (" (" .. p.gaps .. " points have no known recipe)") or ""), "GameFontHighlightSmall", 0.9, 0.82, 0.5, PAD + 8)
+				for i = 1, math.min(#p.steps, 3) do
+					local s = p.steps[i]
+					local rr = ns.Recipes.Get(s.spellID)
+					Line(s.from .. "-" .. s.to .. ": " .. (rr and rr.name or ("recipe " .. s.spellID)) .. " x" .. s.crafts ..
+						" (" .. ns.Money(s.cost) .. ")", "GameFontDisableSmall", 0.8, 0.8, 0.8, PAD + 16)
+				end
+			end
+			local pc = p and p.coverage
+			Line("Based on " .. (cov.found or 0) .. " " .. b.name .. " recipes" ..
+				(pc and (", " .. pc.estimated .. " with estimated levels, " .. pc.missing .. " missing") or "") ..
+				(cov.complete and "" or (cov.walkSkipped and " (open the profession window to add more)" or " (still searching)")) .. ".",
+				"GameFontDisableSmall", 0.6, 0.6, 0.65, PAD + 8)
+		end
+	elseif not okB then
+		Line("Profession tips unavailable: " .. tostring(blocks), "GameFontDisableSmall", 1, 0.5, 0.3)
+	end
 
 	Section("Skip")
 	if #plan.skip == 0 then Line("Nothing skipped.", "GameFontDisableSmall", 0.7, 0.7, 0.7) end
