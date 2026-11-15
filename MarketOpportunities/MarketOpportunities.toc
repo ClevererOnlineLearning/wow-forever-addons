@@ -21,9 +21,11 @@ Logic\Discover.lua
 Logic\Build.lua
 Data\Opportunities.lua
 Data\Raids.lua
+Data\Professions.lua
 Adapters\Scan.lua
 Adapters\Observe.lua
 Adapters\Recipes.lua
+Adapters\Skill.lua
 Gen\Quests.lua
 Gen\Vendor.lua
 UI\Plan.lua
