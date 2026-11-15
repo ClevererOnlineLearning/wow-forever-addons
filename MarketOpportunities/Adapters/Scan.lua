@@ -48,11 +48,8 @@ local function trimmed(summary)
 end
 
 -- After a complete scan: look for tips item by item, a few milliseconds per frame
+local MAX_TIPS = 150 -- the best tips a scan keeps (by rough margin), so saving and ranking stay small
 local function discover(scan)
-	local ids = {}
-	for id, s in pairs(scan.summary) do
-		if s.min and s.min > 0 then ids[#ids + 1] = id end
-	end
 	local char = ns.Char and ns.Char.Get() or {}
 	local settings = ns.cdb and ns.cdb.settings or {}
 	local budget = ns.Budget.Compute(char.gold or 0, settings.budget)
@@ -60,16 +57,26 @@ local function discover(scan)
 	local now = time()
 	local function histOf(id) return ns.db.history and ns.History.OwnMedian(ns.db.history, id, 14, now, scan.scannedAt) end
 	local function priceOf(id) return ns.Prices.Get(id, true) end -- true: don't ask the server for 30k items
-	local i, out = 1, {}
+	local key, top, one = nil, ns.Discover.TopK(MAX_TIPS), {}
+	S.discovering = scan
 	ns.Run("discover", function(ms)
 		local t0 = debugprofilestop()
-		while i <= #ids do
-			for _, c in ipairs(ns.Discover.FromScan(scan.summary, priceOf, histOf, budget, env, { ids[i] })) do
-				out[#out + 1] = c
+		while true do
+			local s
+			key, s = next(scan.summary, key)
+			if key == nil then break end
+			if s.min and s.min > 0 then
+				one[1] = key
+				for _, c in ipairs(ns.Discover.FromScan(scan.summary, priceOf, histOf, budget, env, one)) do
+					top:Push(c, c.blocked and -1 or ns.Discover.Margin(c))
+				end
 			end
-			i = i + 1
-			if i % 2 == 0 and debugprofilestop() - t0 >= ms then return false end
+			if debugprofilestop() - t0 >= ms then return false end
 		end
+		local out = top:Items()
+		S.discovering = nil
+		for id, s in pairs(scan.late or {}) do scan.summary[id] = s end -- refreshed while we walked the table
+		scan.late = nil
 		scan.candidates = out
 		if ns.db.scan and ns.db.scan.scannedAt == scan.scannedAt then
 			ns.db.scan.candidates = out
@@ -79,7 +86,7 @@ local function discover(scan)
 		end
 		ns.Fire("DISCOVER_DONE", #out)
 		return true
-	end, 4)
+	end, 4, function() S.discovering = nil end)
 end
 S.Discover = discover
 
@@ -119,22 +126,18 @@ local function finishStep(r, budget, t0)
 				if r.watch[k] then
 					ns.History.Record(ns.db.history, k, "observed", s.min, r.t)
 				elseif s.min and s.min >= 100 and s.listings >= 2 then
-					r.pick[#r.pick + 1] = { id = k, v = s.min * math.min(s.totalQty, 20) }
+					r.top:Push(k, s.min * math.min(s.totalQty, 20)) -- the most valuable items, no big sort
 				end
 			end
 			r.pickKey = k
-			if k == nil then r.phase = "sort" end
-		elseif r.phase == "sort" then
-			table.sort(r.pick, function(a, b) return a.v > b.v end)
-			r.phase, r.ri = "record", 1
-			return false -- the sort gets a frame of its own
+			if k == nil then r.phase, r.pick, r.ri = "record", r.top:Items(), 1 end
 		elseif r.phase == "record" then
-			local stop = math.min(#r.pick, HISTORY_CAP, r.ri + 99)
+			local stop = math.min(#r.pick, r.ri + 99)
 			for i = r.ri, stop do
-				ns.History.Record(ns.db.history, r.pick[i].id, "observed", r.summary[r.pick[i].id].min, r.t)
+				ns.History.Record(ns.db.history, r.pick[i], "observed", r.summary[r.pick[i]].min, r.t)
 			end
 			r.ri = stop + 1
-			if r.ri > math.min(#r.pick, HISTORY_CAP) then r.phase = "compact" end
+			if r.ri > #r.pick then r.phase = "compact" end
 		elseif r.phase == "compact" then
 			ns.History.Compact(ns.db.history, r.t)
 			r.phase = "done"
@@ -150,7 +153,7 @@ local function finish(complete)
 	local r = reading
 	if not r then return true end
 	if r.phase then return false end
-	r.phase, r.complete, r.t, r.summary, r.pick = "result", complete, time(), {}, {}
+	r.phase, r.complete, r.t, r.summary, r.top = "result", complete, time(), {}, ns.Discover.TopK(HISTORY_CAP)
 	ns.db.history = ns.db.history or {}
 	r.watch = watchSet()
 	return false
@@ -238,7 +241,12 @@ local function updateItem(itemID, units) -- units = {{u, q}}
 	local s = agg:Result()[itemID]
 	current = current or S.Last() or { summary = {}, scannedAt = 0, complete = false, rows = 0, total = 0 }
 	current.summary = current.summary or {}
-	current.summary[itemID] = s
+	if S.discovering == current and current.summary[itemID] == nil then
+		current.late = current.late or {} -- a new key mid-walk would break next(); merged when discovery ends
+		current.late[itemID] = s
+	else
+		current.summary[itemID] = s
+	end
 	current.itemAt = current.itemAt or {}
 	current.itemAt[itemID] = time()
 	if s and s.min then

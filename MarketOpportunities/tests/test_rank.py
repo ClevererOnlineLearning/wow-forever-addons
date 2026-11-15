@@ -44,7 +44,7 @@ def test_budget_at_97g():
 def test_budget_at_10g():
     e = env()
     b = e.ns.Budget.Compute(10 * G, e.table({}))
-    assert b.reserve == 5 * G and b.available == 5 * G and b.speculative == 1 * G
+    assert b.reserve == 5 * G and b.available == 5 * G and b.speculative == 0  # spec §17: no guesses on 10g
 
 
 def test_budget_settings_override():

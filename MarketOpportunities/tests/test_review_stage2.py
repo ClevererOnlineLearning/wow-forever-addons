@@ -189,7 +189,7 @@ def test_scan_finish_is_sliced():
         e.g._tick()
         ticks += 1
     assert e.g._done == 1 and e.ns.Scan.Last().complete is True
-    assert ticks > 3, ticks  # reading and finishing took several frames, not one
+    assert ticks >= 3, ticks  # reading and finishing took several frames, not one
 
 
 # minor 13: no sale rate means thin, never Expected
@@ -220,3 +220,64 @@ def test_scan_fresh_after_refresh():
     assert unit == (4 * 900 + 1100 + 4) // 5 and qty == 14  # ceil(4700 / 5) = 940
     e.g._now = NOW + 1900
     assert e.ns.Scan.Fresh(274964, 5) is None  # older than 30 minutes
+
+
+# load test findings (Stage 8 prep): bounded top-K instead of big sorts; capped tip count
+def test_topk_keeps_best():
+    e = Env()
+    e.load("Core.lua", "Logic/Discover.lua")
+    k = e.ns.Discover.TopK(3)
+    for i, v in enumerate([5, 1, 9, 3, 7, 8]):
+        k.Push(k, "x%d" % i, v)
+    assert [x for x in lua_list(k.Items(k))] == ["x2", "x5", "x4"]  # 9, 8, 7 best first
+
+
+def test_discovery_capped_at_150_tips():
+    e = Env()
+    e.execute(FAKE_AH)
+    e.execute("C_Item = { GetItemInfo = function(id) return 'x', nil,nil,nil,nil,nil,nil,nil,nil,nil, 5000 end }")
+    e.load("Core.lua", "Logic/History.lua", "Logic/Discover.lua", "Logic/Budget.lua", "Data/Opportunities.lua",
+           "Adapters/Prices.lua", "Adapters/Scan.lua")
+    e.g._fire("ADDON_LOADED", "MarketOpportunities")
+    e.ns.Char = e.eval("{ Get = function() return { gold = 970000 } end }")
+    e.g._now = NOW
+    e.execute("_rows = {}; for i = 1, 400 do _rows[i] = { 1000 + i, 1, 100 + i } end")
+    open_ah(e)
+    e.ns.Scan.Full()
+    e.g._fire("REPLICATE_ITEM_LIST_UPDATE")
+    run_frames(e, 400)
+    c = lua_list(e.ns.Scan.Last().candidates)
+    assert len(c) == 150
+    assert c[0].inputs[1].unitPrice == 101  # the biggest margin (5000 - 101) comes first
+
+
+def test_refresh_during_discovery_is_safe():
+    e = Env()
+    e.execute(FAKE_AH)
+    e.execute("""C_Item = { GetItemInfo = function(id) return 'x', nil,nil,nil,nil,nil,nil,nil,nil,nil, 5000 end }
+      C_AuctionHouse.MakeItemKey = function(id) return { itemID = id } end
+      C_AuctionHouse.SendSearchQuery = function() end
+      C_AuctionHouse.GetNumCommoditySearchResults = function() return 1 end
+      C_AuctionHouse.GetCommoditySearchResultInfo = function() return { unitPrice = 50, quantity = 3 } end""")
+    e.load("Core.lua", "Logic/History.lua", "Logic/Discover.lua", "Logic/Budget.lua", "Data/Opportunities.lua",
+           "Adapters/Prices.lua", "Adapters/Scan.lua")
+    e.g._fire("ADDON_LOADED", "MarketOpportunities")
+    e.ns.Char = e.eval("{ Get = function() return { gold = 970000 } end }")
+    e.g._now = NOW
+    e.execute("_rows = {}; for i = 1, 3000 do _rows[i] = { 1000 + i, 1, 100 + i } end")
+    e.execute("local real = debugprofilestop; debugprofilestop = function() _clock = _clock + 0.05; return _clock end")
+    open_ah(e)
+    e.ns.Scan.Full()
+    e.g._fire("REPLICATE_ITEM_LIST_UPDATE")
+    e.execute("_dd = false")
+    e.ns.On("DISCOVER_DONE", e.eval("function() _dd = true end"))
+    ticks = 0
+    while not e.ns.IsRunning("discover") and ticks < 500:
+        e.g._tick(); ticks += 1
+    assert e.ns.IsRunning("discover")
+    e.ns.Scan.Refresh(e.table([777777]))  # a brand-new item arrives mid-walk
+    e.g._fire("COMMODITY_SEARCH_RESULTS_UPDATED", 777777)
+    while not e.g._dd and ticks < 5000:
+        e.g._tick(); ticks += 1
+    assert e.g._dd is True
+    assert e.ns.Scan.Last().summary[777777].min == 50

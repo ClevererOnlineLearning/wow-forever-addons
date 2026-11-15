@@ -14,7 +14,9 @@ function B.Compute(gold, settings)
 	b.quick = settings.quick or math.floor(0.625 * b.available)
 	b.raid = settings.raid or math.floor(0.375 * b.available)
 	b.maxBet = math.min(settings.maxBet or math.floor(0.26 * gold), b.available)
-	b.speculative = math.min(settings.speculative or math.floor(math.min(10 * G, 0.10 * gold)), b.available)
+	-- under 20g there is no room for risk: guesses are hidden (spec §17, 10g character)
+	local spec = gold < 20 * G and 0 or math.floor(math.min(10 * G, 0.10 * gold))
+	b.speculative = math.min(settings.speculative or spec, b.available)
 	b.gold = gold
 	return b
 end

@@ -31,6 +31,9 @@ function ns.BuildPlan(ctx, settings)
 	end
 	local plan = ns.Rank.Plan(evals, budget, settings)
 	plan.budget = budget
+	if budget.gold < 20 * 10000 then
+		table.insert(plan.notes, "Small budget: only safe, cheap tips are shown, and " .. ns.MoneyShort(budget.reserve) .. " is kept back.")
+	end
 	for _, n in ipairs(notes) do table.insert(plan.notes, n) end
 	return plan
 end

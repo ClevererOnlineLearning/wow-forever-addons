@@ -210,3 +210,55 @@ function D.FromScan(summary, priceOf, histMedianOf, budget, env, ids)
 	end
 	return out
 end
+
+------------------------------------------------------------------------
+-- TopK: keeps the k highest-scoring items, a min-heap, so big lists never need one large sort
+------------------------------------------------------------------------
+local Top = {}
+Top.__index = Top
+
+function D.TopK(k) return setmetatable({ k = k, h = {} }, Top) end
+
+function Top:Push(item, score)
+	local h = self.h
+	if #h < self.k then
+		h[#h + 1] = { item, score }
+		local i = #h
+		while i > 1 do
+			local p = math.floor(i / 2)
+			if h[p][2] <= h[i][2] then break end
+			h[p], h[i] = h[i], h[p]
+			i = p
+		end
+	elseif score > h[1][2] then
+		h[1] = { item, score }
+		local i, n = 1, #h
+		while true do
+			local l, r, m = 2 * i, 2 * i + 1, i
+			if l <= n and h[l][2] < h[m][2] then m = l end
+			if r <= n and h[r][2] < h[m][2] then m = r end
+			if m == i then break end
+			h[m], h[i] = h[i], h[m]
+			i = m
+		end
+	end
+end
+
+-- best first (sorting at most k items)
+function Top:Items()
+	local copy = {}
+	for i, x in ipairs(self.h) do copy[i] = x end
+	table.sort(copy, function(a, b) return a[2] > b[2] end)
+	local out = {}
+	for i, x in ipairs(copy) do out[i] = x[1] end
+	return out
+end
+
+-- A rough margin for ordering tips before Econ prices them properly
+function D.Margin(c)
+	local inp, out = c.inputs and c.inputs[1], c.outputs and c.outputs[1]
+	if not inp then return 0 end
+	local unit = inp.unitPrice or 0
+	local sell = (out and out.price) or inp.buyBelow or unit
+	return (sell - unit) * (inp.qty or 1)
+end
