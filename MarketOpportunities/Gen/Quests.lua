@@ -56,12 +56,48 @@ local function questCandidate(q)
 	}
 end
 
+-- Seed records, then what the player has handed in themselves. An observed reward replaces the
+-- seed's; when they disagree the tip says so (conflict).
 Gen.Register("quests", function(ctx)
 	local out = {}
 	local faction = ctx.char and ctx.char.faction
+	local observed = {}
+	for _, o in pairs(ns.db and ns.db.quests or {}) do
+		if o.name and (not o.faction or not faction or o.faction == faction) then observed[o.name] = o end
+	end
+	local used = {}
 	for _, q in ipairs(ns.Data.Quests or {}) do
 		if not q.faction or not faction or q.faction == faction then
-			table.insert(out, questCandidate(q))
+			local c = questCandidate(q)
+			local o = observed[q.name]
+			if o and o.money and o.money > 0 then
+				used[q.name] = true
+				if o.money ~= q.money then
+					c.conflict = true
+					c.money = o.money
+					for _, i in ipairs(c.inputs) do if #c.inputs == 1 then i.buyBelow = math.floor(o.money / i.qty) end end
+				end
+				c.source = c.source .. "; reward seen by you"
+			end
+			table.insert(out, c)
+		end
+	end
+	for name, o in pairs(observed) do
+		if not used[name] and (o.completions or 0) >= 2 and (o.money or 0) > 0 and not (function()
+			for _, q in ipairs(ns.Data.Quests or {}) do if q.name == name then return true end end
+		end)() then
+			local inputs = {}
+			for _, i in ipairs(o.inputs or {}) do
+				inputs[#inputs + 1] = { itemID = i.itemID, qty = i.qty, from = "ah",
+					buyBelow = #(o.inputs or {}) == 1 and math.floor(o.money / i.qty) or nil }
+			end
+			table.insert(out, {
+				id = "quest:seen:" .. name, kind = "quest", title = "Hand in: " .. name,
+				why = "You've handed this in " .. o.completions .. " times; it pays " .. ns.Money(o.money) .. " each time.",
+				inputs = inputs, outputs = {}, money = o.money, handsOnMinutes = 10, waitDays = 0,
+				unverified = { "quest still offered to you" },
+				source = "Seen by you (" .. o.completions .. " hand-ins)",
+			})
 		end
 	end
 	return out

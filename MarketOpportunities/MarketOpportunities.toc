@@ -22,6 +22,7 @@ Logic\Build.lua
 Data\Opportunities.lua
 Data\Raids.lua
 Adapters\Scan.lua
+Adapters\Observe.lua
 Gen\Quests.lua
 Gen\Vendor.lua
 UI\Plan.lua

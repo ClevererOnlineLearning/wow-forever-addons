@@ -84,6 +84,7 @@ function E.Evaluate(c, priceOf, env)
 		end
 	end
 	for _, u in ipairs(c.unverified or {}) do r.checks[#r.checks + 1] = u end
+	if c.conflict then r.checks[#r.checks + 1] = "reward differs from the seed: check it" end
 
 	-- outputs
 	local sure = c.money or 0 -- deterministic money (quest gold, vendor sales)
