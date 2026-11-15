@@ -1,0 +1,13 @@
+## Interface: 16001
+## Title: Market Opportunities
+## Notes: Tonight's plan: gold-making tips for your character, priced and explained. /mo
+## Version: 0.1
+## Author: good mens (Mephz on WoW Forever)
+## X-License: MIT (keep the credit when sharing)
+## SavedVariables: MarketOpportunitiesDB
+## SavedVariablesPerCharacter: MarketOpportunitiesCharDB
+## OptionalDeps: TradeSkillMaster, Auctionator, ItemTree
+## IconTexture: Interface\Icons\INV_Misc_Coin_02
+
+Skin.lua
+Core.lua
