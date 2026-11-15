@@ -21,6 +21,7 @@ Logic\Discover.lua
 Logic\Path.lua
 Logic\Raid.lua
 Logic\Track.lua
+Logic\Community.lua
 Logic\Build.lua
 Data\Opportunities.lua
 Data\Raids.lua
@@ -34,6 +35,7 @@ Gen\Quests.lua
 Gen\Vendor.lua
 Gen\Crafts.lua
 Gen\Raids.lua
+Gen\Community.lua
 UI\Plan.lua
 UI\AHPanel.lua
 UI\Settings.lua

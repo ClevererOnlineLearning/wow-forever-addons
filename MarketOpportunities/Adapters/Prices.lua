@@ -115,14 +115,26 @@ function P.Status()
 end
 
 -- Item names for the UI (nil until the client has the item cached)
+-- Names are also kept in ns.db.itemNames so the optional research job can check tips (read-only).
+local function remember(id, n)
+	if not ns.db then return n end
+	local t = ns.db.itemNames
+	if not t then t = {}; ns.db.itemNames = t; ns.db.itemNameCount = 0 end
+	if t[id] == nil and (ns.db.itemNameCount or 0) < 5000 then
+		t[id] = n
+		ns.db.itemNameCount = (ns.db.itemNameCount or 0) + 1
+	end
+	return n
+end
+
 function P.Name(itemID)
 	if C_Item and C_Item.GetItemNameByID then
 		local ok, n = pcall(C_Item.GetItemNameByID, itemID)
-		if ok and n then return n end
+		if ok and n then return remember(itemID, n) end
 	end
 	if C_Item and C_Item.GetItemInfo then
 		local ok, n = pcall(C_Item.GetItemInfo, itemID)
-		if ok and n then return n end
+		if ok and n then return remember(itemID, n) end
 		if C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, itemID) end
 	end
 	return nil

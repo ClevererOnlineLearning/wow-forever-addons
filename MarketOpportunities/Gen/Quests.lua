@@ -66,6 +66,7 @@ Gen.Register("quests", function(ctx)
 		if o.name and (not o.faction or not faction or o.faction == faction) then observed[o.name] = o end
 	end
 	local used = {}
+	local community = ns.Community and ns.Community.QuestSources() or {}
 	for _, q in ipairs(ns.Data.Quests or {}) do
 		if not q.faction or not faction or q.faction == faction then
 			local c = questCandidate(q)
@@ -79,6 +80,7 @@ Gen.Register("quests", function(ctx)
 				end
 				c.source = c.source .. "; reward seen by you"
 			end
+			if community[q.name] then c.source = c.source .. "; also a community tip (" .. table.concat(community[q.name], ", ") .. ")" end
 			table.insert(out, c)
 		end
 	end

@@ -215,7 +215,7 @@ local function Context()
 		scan = scan, scanAgeMin = scan and scan.scannedAt and math.floor((now - scan.scannedAt) / 60) or nil,
 		deposit = ns.Scan and ns.Scan.Deposit, stale = UI.TsmStale(now), fresh = ns.Scan and ns.Scan.Fresh,
 		sessionMinutes = Settings().sessionMinutes, realmShare = Settings().realmShare, announce = true,
-		trustOf = ns.Tracker and ns.Tracker.TrustOf, learn = ns.Tracker and ns.Tracker.Learn(),
+		trustOf = ns.Tracker and ns.Tracker.TrustOf, learn = ns.Tracker and ns.Tracker.Learn(), nameOf = ns.Prices.Name,
 	}
 end
 
