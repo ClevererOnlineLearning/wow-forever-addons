@@ -29,6 +29,7 @@ local DEFAULTS = {
 	minimap = { angle = 165, hide = false },
 	autoTrack = true,        -- switch tracking to match the mob you target
 	autoTrackCombat = false, -- also during fights (switching may cost a global cooldown)
+	trackLocked = false,     -- "Lock tracking": keep what's on now; auto tracking pauses, reminders keep going
 	feignWarn = true,        -- big warning when a mob resists your Feign Death
 	feignSound = true,
 }
@@ -387,7 +388,7 @@ end
 local function Plain(v) if v == nil or isSecret(v) then return nil end return v end
 
 function HR.AutoTrack()
-	if not db or not db.autoTrack or not SetTrackingC then return end
+	if not db or not db.autoTrack or db.trackLocked or not SetTrackingC then return end
 	if InCombatLockdown() and not db.autoTrackCombat then return end
 	if Plain(UnitExists("target")) ~= true or Plain(UnitIsDead("target")) == true then return end
 	if Plain(UnitCanAttack("player", "target")) ~= true then return end
@@ -414,7 +415,41 @@ function HR.CheckTracking()
 	if not IsKnown(spell) then Chat("you haven't learned " .. name .. " yet.") return end
 	local i, active = HR.FindTracking(spell)
 	if not i then Chat(name .. " isn't in your tracking list.") return end
-	Chat(name .. ": " .. (active and "already on." or "would switch to it.") .. (db.autoTrack and "" or " (auto tracking is off)"))
+	Chat(name .. ": " .. (active and "already on." or "would switch to it.") .. (db.autoTrack and (db.trackLocked and " (tracking is locked)" or "") or " (auto tracking is off)"))
+end
+
+-- The tracking that's on right now (for the lock's messages), or nil.
+function HR.CurrentTracking()
+	if not (NumTracking and TrackingInfo) then return nil end
+	local okN, n = pcall(NumTracking)
+	if not okN or type(n) ~= "number" then return nil end
+	for i = 1, n do
+		local name, active, sid = Entry(i)
+		if Plain(active) and sid and not isSecret(sid) then
+			for _, spell in pairs(TRACK_BY_TYPE) do
+				if sid == spell then return Plain(name) end
+			end
+		end
+	end
+	for i = 1, n do
+		local name, active = Entry(i)
+		if Plain(active) and Plain(name) then return name end
+	end
+end
+
+-- Lock tracking: keeps whatever tracking is on now. Only auto tracking pauses; the buff
+-- reminders and the Feign Death warning carry on. One click (or /hrem tracklock) unlocks.
+function HR.SetTrackLock(on)
+	db.trackLocked = on and true or false
+	if db.trackLocked then
+		local cur = HR.CurrentTracking()
+		Chat("tracking locked" .. (cur and (" on |cffffffff" .. cur .. "|r") or "") .. ". Auto tracking won't switch it until you unlock.")
+	else
+		Chat("tracking unlocked. Auto tracking matches your target again.")
+		HR.AutoTrack()
+	end
+	if HR.UpdateMinimapButton then HR.UpdateMinimapButton() end
+	if HR.OnTrackLockChanged then HR.OnTrackLockChanged() end
 end
 
 ------------------------------------------------------------------------
@@ -541,6 +576,8 @@ SlashCmdList.HUNTERREMINDER = function(msg)
 	elseif cmd == "track" then
 		db.autoTrack = not db.autoTrack; Chat("auto tracking (match your target): " .. OnOff(db.autoTrack))
 		HR.AutoTrack()
+	elseif cmd == "tracklock" then
+		HR.SetTrackLock(not db.trackLocked)
 	elseif cmd == "check" then
 		HR.CheckTracking()
 	elseif cmd == "feign" then
@@ -561,6 +598,7 @@ SlashCmdList.HUNTERREMINDER = function(msg)
 		print("  /hrem sound  - warning sound if a buff drops in combat (" .. OnOff(db.sound) .. ")")
 		print("  /hrem reset  - reset position and size")
 		print("  /hrem track  - switch tracking to match your target (" .. OnOff(db.autoTrack) .. ")")
+		print("  /hrem tracklock  - lock tracking: keep the current one, pause auto tracking (" .. OnOff(db.trackLocked) .. ")")
 		print("  /hrem check  - what auto tracking sees on your target")
 		print("  /hrem feign  - warn when Feign Death is resisted (" .. OnOff(db.feignWarn) .. ")   /hrem feign test")
 	else

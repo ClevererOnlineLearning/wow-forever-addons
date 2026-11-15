@@ -91,6 +91,23 @@ y = S.Row(c3, 26)
 Check(c3, "Also during fights (may cost a global cooldown)", y, function() return db().autoTrackCombat end,
 	function(v) db().autoTrackCombat = v end)
 y = S.Row(c3, 30)
+local lockBtn = S.Button(c3, "", 130, 24)
+lockBtn:SetPoint("TOPLEFT", L, y)
+local lockNote = c3:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+lockNote:SetPoint("LEFT", lockBtn, "RIGHT", 10, 0)
+lockNote:SetPoint("RIGHT", c3, "RIGHT", -L, 0)
+lockNote:SetJustifyH("LEFT")
+local function PaintLock()
+	lockBtn:SetText(db().trackLocked and "Unlock tracking" or "Lock tracking")
+	lockNote:SetText(db().trackLocked and "|cffffd100Locked:|r your tracking stays as it is." or "Keeps your current tracking until you unlock.")
+end
+lockBtn:SetScript("OnClick", function() HR.SetTrackLock(not db().trackLocked) end)
+S.Tip(lockBtn, "Lock tracking", "Keeps the tracking you have on now: auto tracking stops switching it with every target. "
+	.. "Your buff reminders and the Feign Death warning keep working. Click again to unlock. "
+	.. "Also: Shift-click the minimap button, or /hrem tracklock.")
+R(PaintLock)
+HR.OnTrackLockChanged = PaintLock
+y = S.Row(c3, 30)
 S.Note(c3, "Beasts, humanoids, undead, demons, elementals, giants and dragonkin, for talents like Improved Tracking.", L, y, CW - 2 * L)
 S.Fit(c3, 4)
 
@@ -160,6 +177,13 @@ border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
 border:SetSize(53, 53)
 border:SetPoint("TOPLEFT")
 
+-- a small padlock on the button while tracking is locked
+local padlock = mm:CreateTexture(nil, "OVERLAY", nil, 2)
+padlock:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")
+padlock:SetSize(13, 13)
+padlock:SetPoint("BOTTOMRIGHT", -4, 5)
+padlock:Hide()
+
 local atan2 = math.atan2 or function(yv, xv) return math.atan(yv, xv) end
 
 local function PlaceButton()
@@ -171,6 +195,7 @@ end
 
 function HR.UpdateMinimapButton()
 	if db().minimap.hide then mm:Hide() else PlaceButton(); mm:Show() end
+	padlock:SetShown(db().trackLocked and true or false)
 end
 S.Group(mm, "HunterReminder", function() return db().minimap end, HR.UpdateMinimapButton) -- the shared minimap bag
 
@@ -186,7 +211,9 @@ end)
 mm:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
 
 mm:SetScript("OnClick", function(self, button)
-	if button == "RightButton" then HR.Test() else HR.ToggleOptions() end
+	if IsShiftKeyDown() then HR.SetTrackLock(not db().trackLocked)
+	elseif button == "RightButton" then HR.Test() else HR.ToggleOptions() end
+	if GameTooltip:IsOwned(self) then self:GetScript("OnEnter")(self) end
 end)
 mm:SetScript("OnEnter", function(self)
 	GameTooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -195,7 +222,9 @@ mm:SetScript("OnEnter", function(self)
 		GameTooltip:AddDoubleLine(t.name or t.fallbackName, MODES[db()[t.key .. "Mode"]] or "", 1, 1, 1)
 	end
 	GameTooltip:AddLine("|cffffffffLeft-click|r  settings", 0.8, 0.8, 0.8)
+	GameTooltip:AddDoubleLine("Tracking", db().trackLocked and "|cffffd100Locked|r" or (db().autoTrack and "|cff33ff33Matches target|r" or "|cff888888Auto off|r"), 1, 1, 1)
 	GameTooltip:AddLine("|cffffffffRight-click|r  test", 0.8, 0.8, 0.8)
+	GameTooltip:AddLine("|cffffffffShift-click|r  " .. (db().trackLocked and "unlock tracking" or "lock tracking"), 0.8, 0.8, 0.8)
 	GameTooltip:AddLine("|cffffffffDrag|r  move this button", 0.8, 0.8, 0.8)
 	GameTooltip:Show()
 end)
