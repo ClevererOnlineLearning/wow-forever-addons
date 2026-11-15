@@ -14,7 +14,7 @@ If you share, copy or build on these, please credit **good mens**. The MIT licen
 | PetWarn | "Pet not attacking" in fights, and "Mend Pet!" when your pet drops below 60% health | `/petwarn` |
 | Hunter's Reminder | Pulses when Trueshot Aura or Aspect of the Hawk is missing, warns when Feign Death is resisted, tracking that matches your target | `/hrem` |
 | Fastest Way To | The fastest way somewhere: flights, boats, zeppelins and zones, with real walking paths (GPL-3.0, see its `CREDITS.md`) | `/fw` |
-| RangeTint | Colours action buttons: red out of range, orange near the edge, purple too close, blue out of mana | `/rtint` |
+| RangeTint | Colours action buttons: red out of range, a pulsing teal border near the edge, purple too close, blue out of mana | `/rtint` |
 | FrameCheck | FPS, frame time, how much each add-on uses, ping, and a stutter log | `/fcheck` |
 | Market Opportunities | "Tonight's plan": gold-making tips for your character and budget — quests, AH deals, vendor resale, professions, raid prep — each priced and explained; advice only | `/mo` |
 | GunSilencer | Replaces gun sounds | `/gunsilencer` |

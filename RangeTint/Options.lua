@@ -43,7 +43,7 @@ end
 local c1 = S.Card(win, "Colours", 12, -44, CW)
 local ROWS = {
 	{ "red", "Out of range" },
-	{ "orange", "In range, but close to the edge" },
+	{ "edge", "Near the edge of range (pulsing border)" },
 	{ "purple", "Too close (inside a shot's minimum range)" },
 	{ "blue", "Not enough mana" },
 }
@@ -65,12 +65,12 @@ for _, row in ipairs(ROWS) do
 	R(function() paint(); cb:SetChecked(db()[key]) end)
 end
 local y = S.Row(c1, 30)
-R(S.Stepper(c1, "Orange when within", L, y, CW - 2 * L, function() return db().margin .. " yards of the edge" end,
+R(S.Stepper(c1, "Edge border within", L, y, CW - 2 * L, function() return db().margin .. " yards of the edge" end,
 	function(d) db().margin = math.min(20, math.max(3, db().margin + d)); RT.UpdateAll() end))
 y = S.Row(c1, 54)
 S.Note(c1, "The game only tells add-ons \"in range: yes or no\", never the distance. RangeTint narrows the distance down "
-	.. "from all your spells' answers, so orange and purple show wherever there's a check close enough. "
-	.. "Hunters: shots at 41 yards and Sniper Shot at 51 give an orange \"near the edge\" for Sniper Shot.", L, y, CW - 2 * L)
+	.. "from all your spells' answers, so the edge border and purple show wherever there's a check close enough. "
+	.. "Hunters: shots at 41 yards and Sniper Shot at 51 give Sniper Shot a teal border near its edge; it's still in range.", L, y, CW - 2 * L)
 S.Fit(c1, 8)
 
 local foot = S.Footer(win, 40)
@@ -81,7 +81,7 @@ R(function() mm:SetChecked(not db().minimap.hide) end)
 local test = S.Button(foot, "Test colours", 110, 24, true)
 test:SetPoint("RIGHT", -12, 0)
 test:SetScript("OnClick", function() RT.Test() end)
-S.Tip(test, "Test colours", "Shows each colour on your buttons for a moment: red, orange, purple, blue.")
+S.Tip(test, "Test colours", "Shows each colour on your buttons for a moment: red, the teal edge border, purple, blue.")
 win:SetHeight(-S.Below(c1) + 40 + 2)
 
 function RT.ToggleOptions() win:SetShown(not win:IsShown()) end

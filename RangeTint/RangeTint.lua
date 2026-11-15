@@ -1,12 +1,13 @@
 -- RangeTint: colours the game's own action buttons by range and mana.
 --   red    = target out of range
---   orange = in range, but close to the edge
+--   teal   = in range, but close to the edge: a soft pulsing border, the icon itself stays clear
 --   purple = too close (e.g. a hunter's dead zone, inside a shot's minimum range)
 --   blue   = not enough mana
 -- The game only says "in range: yes/no" per spell, never the distance. RangeTint works out a
 -- distance window from every yes/no answer it can get (your buttons' spells, plus the 10/11/28
--- yard interact checks), and uses that window for orange and purple.
--- Only icon colours change (SetVertexColor); nothing secure is touched. Written by good mens.
+-- yard interact checks), and uses that window for the edge border and purple.
+-- Only icon colours change (SetVertexColor) and a plain border frame is drawn over the icon;
+-- nothing secure is touched. Written by good mens.
 local _, ns = ...
 local RT = {}
 _G.RangeTint = RT
@@ -17,11 +18,11 @@ local function Plain(v) if v == nil or Secret(v) then return nil end return v en
 
 RT.DEFAULTS = {
 	enabled = true,
-	red = true, orange = true, purple = true, blue = true,
-	margin = 10, -- orange when within this many yards of a spell's maximum range
+	red = true, edge = true, purple = true, blue = true,
+	margin = 10, -- edge border when within this many yards of a spell's maximum range
 	colors = {
 		red = { 1, 0.3, 0.3 },
-		orange = { 1, 0.62, 0.18 },
+		edge = { 0.25, 0.9, 0.82 }, -- teal (blue already means "out of mana")
 		purple = { 0.78, 0.42, 1 },
 		blue = { 0.45, 0.55, 1 },
 	},
@@ -47,7 +48,53 @@ local PREFIXES = { "ActionButton", "MultiBarBottomLeftButton", "MultiBarBottomRi
 	"MultiBarLeftButton", "MultiBar5Button", "MultiBar6Button", "MultiBar7Button", "BonusActionButton" }
 local buttons = {}
 local tinted = setmetatable({}, { __mode = "k" }) -- button -> colour we put on it
+local edged = setmetatable({}, { __mode = "k" }) -- button -> colour of the edge border shown on it
 local busy = false
+
+-- The "near the edge" border: 2 px solid plus a fainter 2 px inside it, pulsing slowly.
+local function MakeEdge(b)
+	local f = CreateFrame("Frame", nil, b)
+	f:SetAllPoints(b.icon)
+	f:SetFrameLevel((b:GetFrameLevel() or 0) + 3)
+	f.lines = {}
+	local function Line(inset, alpha)
+		local t, bo, l, r = f:CreateTexture(nil, "OVERLAY"), f:CreateTexture(nil, "OVERLAY"), f:CreateTexture(nil, "OVERLAY"), f:CreateTexture(nil, "OVERLAY")
+		t:SetPoint("TOPLEFT", inset, -inset); t:SetPoint("TOPRIGHT", -inset, -inset); t:SetHeight(2)
+		bo:SetPoint("BOTTOMLEFT", inset, inset); bo:SetPoint("BOTTOMRIGHT", -inset, inset); bo:SetHeight(2)
+		l:SetPoint("TOPLEFT", inset, -inset - 2); l:SetPoint("BOTTOMLEFT", inset, inset + 2); l:SetWidth(2)
+		r:SetPoint("TOPRIGHT", -inset, -inset - 2); r:SetPoint("BOTTOMRIGHT", -inset, inset + 2); r:SetWidth(2)
+		for _, x in ipairs({ t, bo, l, r }) do f.lines[#f.lines + 1] = { tex = x, alpha = alpha } end
+	end
+	Line(0, 1)
+	Line(2, 0.35)
+	local pulse = f:CreateAnimationGroup()
+	pulse:SetLooping("BOUNCE")
+	local a = pulse:CreateAnimation("Alpha")
+	a:SetFromAlpha(1)
+	a:SetToAlpha(0.3)
+	a:SetDuration(0.9)
+	a:SetSmoothing("IN_OUT")
+	f.pulse = pulse
+	f:Hide()
+	b.rtEdge = f
+	return f
+end
+
+local function ShowEdge(b, c)
+	local f = b.rtEdge or MakeEdge(b)
+	if edged[b] ~= c then
+		for _, x in ipairs(f.lines) do x.tex:SetColorTexture(c[1], c[2], c[3], x.alpha) end
+		edged[b] = c
+	end
+	if not f:IsShown() then f:Show(); f.pulse:Play() end
+end
+
+local function HideEdge(b)
+	local f = b.rtEdge
+	edged[b] = nil
+	if f and f:IsShown() then f.pulse:Stop(); f:Hide() end
+end
+RT.edged = edged
 
 local function Paint(b, c)
 	busy = true
@@ -251,8 +298,8 @@ function RT.ColorFor(slot, lo, hi)
 	end
 	local ok, _, noMana = pcall(IsUsableAction, slot)
 	if ok and Plain(noMana) and db.blue then return "blue" end
-	if inRange == true and db.orange and r and hostile and r.max > 5 and lo > 0 and lo >= r.max - db.margin then
-		return "orange"
+	if inRange == true and db.edge and r and hostile and r.max > 5 and lo > 0 and lo >= r.max - db.margin then
+		return "edge"
 	end
 	return nil
 end
@@ -273,11 +320,17 @@ function RT.UpdateAll()
 			key = RT.ColorFor(Slot(b), lo, hi)
 		end
 		local c = key and db.colors[key]
-		if c then
+		if key == "edge" and c then
+			-- a border, not a tint: the icon keeps the game's own colour
+			if tinted[b] then Restore(b) end
+			ShowEdge(b, c)
+		elseif c then
+			if edged[b] then HideEdge(b) end
 			if tinted[b] ~= c then tinted[b] = c end
 			Paint(b, c)
-		elseif tinted[b] then
-			Restore(b)
+		else
+			if edged[b] then HideEdge(b) end
+			if tinted[b] then Restore(b) end
 		end
 	end
 end
@@ -304,7 +357,7 @@ end
 RT.TargetChanged = TargetChanged
 
 function RT.Test()
-	local order = { "red", "orange", "purple", "blue" }
+	local order = { "red", "edge", "purple", "blue" }
 	local i = 0
 	local function step()
 		i = i + 1
@@ -329,6 +382,12 @@ ev:SetScript("OnEvent", function(self, e, a1)
 	if e == "ADDON_LOADED" then
 		if a1 ~= "RangeTint" then return end
 		RangeTintDB = RangeTintDB or {}
+		-- 1.2: the orange "near the edge" tint became a teal border; keep your on/off choice
+		if RangeTintDB.orange ~= nil then
+			if RangeTintDB.edge == nil then RangeTintDB.edge = RangeTintDB.orange end
+			RangeTintDB.orange = nil
+		end
+		if type(RangeTintDB.colors) == "table" then RangeTintDB.colors.orange = nil end
 		Fill(RangeTintDB, RT.DEFAULTS)
 		db = RangeTintDB
 		RT.db = db
