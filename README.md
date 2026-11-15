@@ -16,6 +16,7 @@ If you share, copy or build on these, please credit **good mens**. The MIT licen
 | Fastest Way To | The fastest way somewhere: flights, boats, zeppelins and zones, with real walking paths (GPL-3.0, see its `CREDITS.md`) | `/fw` |
 | RangeTint | Colours action buttons: red out of range, orange near the edge, purple too close, blue out of mana | `/rtint` |
 | FrameCheck | FPS, frame time, how much each add-on uses, ping, and a stutter log | `/fcheck` |
+| Market Opportunities | "Tonight's plan": gold-making tips for your character and budget — quests, AH deals, vendor resale, professions, raid prep — each priced and explained; advice only | `/mo` |
 | GunSilencer | Replaces gun sounds | `/gunsilencer` |
 | SLoTe | Scrolling loot text, Forever port (see credits) | `/slote` |
 
