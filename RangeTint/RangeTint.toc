@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: RangeTint
-## Notes: Colours your action buttons: red when out of range, orange near the edge, purple when too close, blue when out of mana. /rtint
-## Version: 1.1
+## Notes: Colours your action buttons: red when out of range, a soft teal border near the edge, purple when too close, blue when out of mana. /rtint
+## Version: 1.2
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## SavedVariables: RangeTintDB
