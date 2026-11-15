@@ -35,3 +35,29 @@ function ns.Data.NextRaid(now, calendar)
 	end
 	return best
 end
+
+-- Raid stock: things that sold for more when raids opened in Classic. Not verified on Forever, so
+-- every record is Classic-derived and speculative until Forever's own price history shows a rise.
+-- rise = the extra the sale price is assumed to reach (an estimate, shown as a guess).
+ns.Data.RaidStock = {
+	{ itemID = 13457, name = "Greater Fire Protection Potion", rise = 0.25, classic = true, source = "Classic raid demand (fire resistance)" },
+	{ itemID = 13446, name = "Major Healing Potion", rise = 0.15, classic = true, source = "Classic raid demand" },
+	{ itemID = 13452, name = "Elixir of the Mongoose", rise = 0.2, classic = true, source = "Classic raid demand (agility classes)" },
+	{ itemID = 13468, name = "Black Lotus", rise = 0.2, classic = true, source = "Classic flask demand" },
+	{ itemID = 7068, name = "Elemental Fire", rise = 0.2, classic = true, source = "Classic fire resistance crafting" },
+}
+
+-- Raid prep per class: what the character will want for the raids (bought now if cheaper than usual)
+local ALL = { { itemID = 13446, name = "Major Healing Potion", qty = 5 } }
+ns.Data.RaidPrep = {
+	HUNTER = { { itemID = 13452, name = "Elixir of the Mongoose", qty = 5 }, { itemID = 13457, name = "Greater Fire Protection Potion", qty = 5 } },
+	ROGUE = { { itemID = 13452, name = "Elixir of the Mongoose", qty = 5 }, { itemID = 13457, name = "Greater Fire Protection Potion", qty = 5 } },
+	WARRIOR = { { itemID = 13452, name = "Elixir of the Mongoose", qty = 5 }, { itemID = 13457, name = "Greater Fire Protection Potion", qty = 5 } },
+	MAGE = { { itemID = 13454, name = "Greater Arcane Elixir", qty = 5 }, { itemID = 13457, name = "Greater Fire Protection Potion", qty = 5 } },
+	WARLOCK = { { itemID = 13454, name = "Greater Arcane Elixir", qty = 5 }, { itemID = 13457, name = "Greater Fire Protection Potion", qty = 5 } },
+	PRIEST = { { itemID = 13443, name = "Superior Mana Potion", qty = 5 }, { itemID = 13457, name = "Greater Fire Protection Potion", qty = 5 } },
+	DRUID = { { itemID = 13443, name = "Superior Mana Potion", qty = 5 }, { itemID = 13457, name = "Greater Fire Protection Potion", qty = 5 } },
+	PALADIN = { { itemID = 13443, name = "Superior Mana Potion", qty = 5 }, { itemID = 13457, name = "Greater Fire Protection Potion", qty = 5 } },
+	SHAMAN = { { itemID = 13443, name = "Superior Mana Potion", qty = 5 }, { itemID = 13457, name = "Greater Fire Protection Potion", qty = 5 } },
+}
+ns.Data.RaidPrepAll = ALL

@@ -128,7 +128,7 @@ function E.Evaluate(c, priceOf, env)
 		end
 	end
 
-	r.capital, r.cost = capital, cost
+	r.capital, r.cost, r.saving = capital, cost, c.saving
 	r.netHigh = sure + ahHigh - cost
 	r.netLow = sure + ahLow - cost
 	r.net = r.netLow

@@ -65,7 +65,18 @@ function R.Plan(evals, budget, settings)
 			table.insert(plan.today, e)
 		end
 	end
-	local raid = 0
+	local raid = 0 -- your own raid prep first, then stock to sell
+	for _, e in ipairs(prepPool) do
+		local cap = e.capital or 0
+		if raid + cap > budget.raid then
+			skip(plan, e, "over raid budget")
+		elseif total + cap > budget.available then
+			skip(plan, e, "over budget")
+		else
+			raid, total = raid + cap, total + cap
+			table.insert(plan.prep, e)
+		end
+	end
 	for _, e in ipairs(stockPool) do
 		local cap = e.capital or 0
 		if raid + cap > budget.raid then
@@ -78,17 +89,6 @@ function R.Plan(evals, budget, settings)
 			raid, total = raid + cap, total + cap
 			if e.returnClass == "speculative" then spec = spec + cap end
 			table.insert(plan.stock, e)
-		end
-	end
-	for _, e in ipairs(prepPool) do
-		local cap = e.capital or 0
-		if raid + cap > budget.raid then
-			skip(plan, e, "over raid budget")
-		elseif total + cap > budget.available then
-			skip(plan, e, "over budget")
-		else
-			raid, total = raid + cap, total + cap
-			table.insert(plan.prep, e)
 		end
 	end
 	plan.minutes, plan.spent, plan.raidSpent, plan.totalSpent = minutes, spent, raid, total

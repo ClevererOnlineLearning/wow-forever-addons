@@ -16,6 +16,7 @@ function C.Refresh()
 	local c = { professions = {} }
 	c.level = call(UnitLevel, "player") or 1
 	c.faction = call(UnitFactionGroup, "player")
+	c.class = select(2, call(UnitClass, "player"))
 	c.gold = call(GetMoney) or 0
 	-- GetProfessions answers nil right at login on Forever (spec §4a); read again later
 	local idx = { call(GetProfessions) }

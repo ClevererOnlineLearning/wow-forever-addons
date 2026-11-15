@@ -115,3 +115,16 @@ def test_plan_header_without_scan():
     win.Hide(win)
     e.ns.UI.Toggle()
     assert e.g._textsContaining("No scan yet") == 1
+
+
+def test_settings_window_and_raid_sections():
+    e = game()
+    w = e.g.MarketOpportunitiesSettings
+    w.Hide(w)
+    e.g.SlashCmdList.MARKETOPPORTUNITIES("settings")
+    assert w.shown
+    assert e.g._textsContaining("Using the bundled dates") == 1
+    pw = e.g.MarketOpportunitiesWindow
+    pw.Hide(pw)
+    e.ns.UI.Toggle()
+    assert e.g._textsContaining("Spending limit for raids") == 1

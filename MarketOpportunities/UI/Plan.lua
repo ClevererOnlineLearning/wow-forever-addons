@@ -103,6 +103,10 @@ local function Payout(e)
 end
 
 local function Numbers(e)
+	if e.candidate.kind == "raidPrep" then
+		local s = e.saving
+		return "Costs " .. ns.Money(e.capital or 0) .. (s and s > 0 and (", saves " .. ns.Money(s) .. " vs usual") or "")
+	end
 	if e.returnClass == "guaranteed" and e.exactHidden then
 		local c = e.candidate
 		local payout = (c.money or 0)
@@ -144,6 +148,8 @@ local function Tip(e, priceOf)
 	if e.returnClass == "speculative" then
 		Line("Risky: depends on future demand or thin data. Only from your risk budget.", "GameFontDisableSmall", 1, 0.5, 0.15, PAD + 4)
 	end
+	if c.evidence then Line("Evidence: " .. c.evidence .. (c.buyWindow and ("   ·   buy " .. c.buyWindow .. ", sell " .. c.sellWindow) or ""),
+		"GameFontHighlightSmall", c.evidence == "confirmed" and 0.3 or 1, c.evidence == "confirmed" and 0.85 or (c.evidence == "likely" and 0.82 or 0.5), 0.2, PAD + 4) end
 	if c.source then Line("Source: " .. c.source, "GameFontDisableSmall", 0.55, 0.55, 0.6, PAD + 4) end
 	cursor = cursor - 4
 	CardBg(top, cursor)
@@ -198,7 +204,7 @@ local function Header(plan, ctx)
 	local b = plan.budget
 	Line("Gold " .. ns.MoneyShort(ch.gold) .. "   ·   Budget " .. ns.MoneyShort(b.quick) .. " quick, " .. ns.MoneyShort(b.raid) ..
 		" raids   ·   keeping " .. ns.MoneyShort(b.reserve), "GameFontHighlightSmall", 0.85, 0.85, 0.85)
-	local r = ns.Data.NextRaid(ctx.now)
+	local r = ns.Raid.Next(ns.Raid.Calendar(), ctx.now)
 	if r then
 		local m = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" }
 		local y, mo, d = r.date:match("^(%d+)-(%d+)-(%d+)$")
@@ -236,6 +242,8 @@ function UI.Build()
 	for _, e in ipairs(plan.today) do Tip(e, ctx.priceOf) end
 
 	Section("Hold for raids")
+	Line("Spending limit for raids: " .. ns.MoneyShort(plan.budget.raid) .. " (" .. ns.MoneyShort(plan.raidSpent or 0) .. " planned)",
+		"GameFontDisableSmall", 0.7, 0.7, 0.75)
 	Line("Stock to sell", "GameFontNormal", 0.9, 0.9, 0.9)
 	if #plan.stock == 0 then Line("No raid stock tips yet.", "GameFontDisableSmall", 0.7, 0.7, 0.7) end
 	for _, e in ipairs(plan.stock) do Tip(e, ctx.priceOf) end
@@ -326,6 +334,9 @@ session:SetScript("OnClick", function()
 	UI.Refresh(true)
 end)
 S.Tip(session, "Session length", "How much playing time tonight's plan may fill: 30 or 60 minutes.")
+local setBtn = S.Button(foot, "Settings", 80, 22)
+setBtn:SetPoint("LEFT", session, "RIGHT", 8, 0)
+setBtn:SetScript("OnClick", function() UI.ToggleSettings() end)
 local advice = S.Note(foot, "Advice only: you do the buying.", 0, 0)
 advice:ClearAllPoints()
 advice:SetPoint("RIGHT", -12, 0)
@@ -450,8 +461,9 @@ local function Slash(msg)
 	end
 	if msg == "recipes stop" then ns.Recipes.Stop(); ns.Print("recipe search stopped (it carries on after /reload)."); return end
 	if msg == "recipes rebuild" then ns.Recipes.Rebuild(); ns.Print("searching all recipes again in the background."); return end
+	if msg == "settings" or msg == "options" then UI.ToggleSettings(); return end
 	if msg == "" then UI.Toggle(); return end
-	ns.Print("/mo  open tonight's plan   ·   /mo 30 or /mo 60  session length   ·   /mo price <itemID>   ·   /mo recipes [bench | stop | rebuild]")
+	ns.Print("/mo  open tonight's plan   ·   /mo settings   ·   /mo 30 or /mo 60   ·   /mo price <itemID>   ·   /mo recipes [bench | stop | rebuild]")
 end
 
 ns.On("PLAYER_LOGIN", function()
