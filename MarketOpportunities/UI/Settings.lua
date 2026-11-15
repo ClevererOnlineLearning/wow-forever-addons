@@ -45,6 +45,16 @@ for i, f in ipairs(FIELDS) do
 	local auto = S.Note(card, "", 300, y - 6, 100)
 	edits[f.key] = { edit = e, auto = auto }
 end
+local gy = S.Row(card, 28)
+S.Text(card, "Savings goal", 14, gy - 5)
+local goal = S.Edit(card, 90, 22)
+goal:SetPoint("TOPLEFT", 200, gy)
+goal:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+goal:SetScript("OnEditFocusLost", function(self)
+	local v = Num(self:GetText())
+	ns.cdb.goal = v and v > 0 and math.floor(v * G) or nil
+	UI.Refresh(true)
+end)
 local y = S.Row(card, 28)
 S.Text(card, "Your realm's share of region sales (%)", 14, y - 5)
 local share = S.Edit(card, 60, 22)
@@ -128,6 +138,7 @@ local function Update()
 		edits[f.key].edit:SetText(v and tostring(v / G) or "")
 		edits[f.key].auto:SetText(b and ("now " .. ns.MoneyShort(b[f.key] or 0)) or "")
 	end
+	goal:SetText(ns.cdb.goal and tostring(ns.cdb.goal / G) or "")
 	share:SetText(s.realmShare and tostring(math.floor(s.realmShare * 100 + 0.5)) or "")
 	FillCalendar()
 	local c = ns.db.recipes or {}

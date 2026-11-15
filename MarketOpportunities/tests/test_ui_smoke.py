@@ -1,6 +1,6 @@
 """Loads every file the .toc lists, with widget stubs, and builds the plan window."""
 import os
-from run import Env, ROOT, HERE
+from run import Env, ROOT, HERE, lua_list
 
 GAME = """
 UnitLevel = function() return 53 end
@@ -128,3 +128,33 @@ def test_settings_window_and_raid_sections():
     pw.Hide(pw)
     e.ns.UI.Toggle()
     assert e.g._textsContaining("Spending limit for raids") == 1
+
+
+def test_tracking_end_to_end():
+    e = game()
+    e.execute("""
+      _money = 970000; _motes = 0
+      GetMoney = function() return _money end
+      C_Item.GetItemCount = function(id) if id == 274964 then return _motes end return 0 end
+      GetTime = function() return _now end
+    """)
+    e.g._fire("PLAYER_MONEY")
+    win = e.g.MarketOpportunitiesWindow
+    win.Hide(win)
+    e.ns.UI.Toggle()
+    btn = [f for f in e.eval("_frames").values() if f.kind == "Button" and f.text == "I'm doing this" and f.shown]
+    assert len(btn) == 1
+    btn[0].scripts.OnClick(btn[0])
+    assert len(lua_list(e.ns.Tracker.Records())) == 1
+    # buy 5 motes for 50s: the gold drop and the bag increase arrive together
+    e.execute("_money = _money - 5000; _motes = 5")
+    e.g._fire("PLAYER_MONEY")
+    e.g._fire("BAG_UPDATE_DELAYED")
+    r = lua_list(e.ns.Tracker.Records())[0]
+    assert r.units[1].qty == 5 and r.units[1].cost == 1000
+    # hand them in
+    e.g._fire("QUEST_REWARD_SEEN", "More Unstable Magic", 6500)
+    assert e.ns.Track.State(r, e.g._now) == "realised"
+    assert e.ns.Track.Result(r).profit == 1500
+    e.ns.UI.Build()
+    assert e.g._textsContaining("Realised +15s") >= 1

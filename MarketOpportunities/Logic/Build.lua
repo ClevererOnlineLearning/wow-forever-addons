@@ -18,6 +18,12 @@ function ns.BuildPlan(ctx, settings)
 	for _, c in ipairs(cands) do
 		local ok, r = pcall(ns.Econ.Evaluate, c, ctx.priceOf, env)
 		if ok then
+			local L = ctx.learn and ctx.learn[c.kind]
+			if r.ok and L and (L.weight or 0) > 0 and r.confidence then
+				local ratio = math.max(0, math.min(L.realisedVsPredicted or 1, 1.5))
+				r.confidence = math.min(1, r.confidence * (1 - L.weight + L.weight * ratio))
+				r.learned = L
+			end
 			table.insert(evals, r)
 		else
 			table.insert(notes, "could not price " .. tostring(c.title) .. ": " .. tostring(r))

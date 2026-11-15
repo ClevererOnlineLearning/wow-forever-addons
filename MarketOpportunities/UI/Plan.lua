@@ -43,13 +43,29 @@ scroll:SetScript("OnMouseWheel", function(self, delta)
 	self:SetVerticalScroll(v)
 end)
 
-local pool = { fs = {}, bg = {} }
-local nFs, nBg, cursor = 0, 0, 0
+local pool = { fs = {}, bg = {}, btn = {} }
+local nFs, nBg, nBtn, cursor = 0, 0, 0, 0
 
 local function Reset()
 	for _, f in ipairs(pool.fs) do f:Hide() end
 	for _, b in ipairs(pool.bg) do b:Hide() end
-	nFs, nBg, cursor = 0, 0, -10
+	for _, b in ipairs(pool.btn) do b:Hide() end
+	nFs, nBg, nBtn, cursor = 0, 0, 0, -10
+end
+
+local function SmallButton(text, y, onClick)
+	nBtn = nBtn + 1
+	local b = pool.btn[nBtn]
+	if not b then
+		b = S.Button(content, "", 104, 18)
+		pool.btn[nBtn] = b
+	end
+	b:SetText(text)
+	b:ClearAllPoints()
+	b:SetPoint("TOPRIGHT", content, "TOPLEFT", W - 2 - PAD - 16, y)
+	b:SetScript("OnClick", onClick)
+	b:Show()
+	return b
 end
 
 local function Line(text, font, r, g, b, indent, gap)
@@ -124,6 +140,12 @@ end
 local function Tip(e, priceOf)
 	local c = e.candidate
 	local top = cursor
+	local rec = ns.Tracker and ns.Tracker.Find(c.id)
+	if rec then
+		SmallButton("Stop tracking", top - 2, function() ns.Tracker.Abandon(c.id); UI.Refresh(true) end)
+	elseif e.ok and c.kind ~= "farm" then
+		SmallButton("I'm doing this", top - 2, function() ns.Tracker.Accept(e); UI.Refresh(true) end)
+	end
 	cursor = cursor - 4
 	Line(c.itemID and (c.title .. ": " .. ItemName(c.itemID)) or c.title, "GameFontNormal", 1, 1, 1, PAD + 4)
 	local k = CLASS[e.returnClass] or CLASS.speculative
@@ -151,6 +173,8 @@ local function Tip(e, priceOf)
 	if c.evidence then Line("Evidence: " .. c.evidence .. (c.buyWindow and ("   ·   buy " .. c.buyWindow .. ", sell " .. c.sellWindow) or ""),
 		"GameFontHighlightSmall", c.evidence == "confirmed" and 0.3 or 1, c.evidence == "confirmed" and 0.85 or (c.evidence == "likely" and 0.82 or 0.5), 0.2, PAD + 4) end
 	if c.source then Line("Source: " .. c.source, "GameFontDisableSmall", 0.55, 0.55, 0.6, PAD + 4) end
+	if e.learned then Line("Adjusted by your past results (" .. e.learned.n .. " tips).", "GameFontDisableSmall", 0.55, 0.7, 0.9, PAD + 4) end
+	if rec then Line(UI.TrackText(rec), "GameFontHighlightSmall", 0.55, 0.8, 1, PAD + 4) end
 	cursor = cursor - 4
 	CardBg(top, cursor)
 	cursor = cursor - 8
@@ -191,7 +215,28 @@ local function Context()
 		scan = scan, scanAgeMin = scan and scan.scannedAt and math.floor((now - scan.scannedAt) / 60) or nil,
 		deposit = ns.Scan and ns.Scan.Deposit, stale = UI.TsmStale(now), fresh = ns.Scan and ns.Scan.Fresh,
 		sessionMinutes = Settings().sessionMinutes, realmShare = Settings().realmShare, announce = true,
+		trustOf = ns.Tracker and ns.Tracker.TrustOf, learn = ns.Tracker and ns.Tracker.Learn(),
 	}
+end
+
+function UI.TrackText(r)
+	local now = time()
+	local st = ns.Track.State(r, now)
+	local res = ns.Track.Result(r)
+	if st == "realised" and res then
+		return "Realised " .. (res.profit >= 0 and "+" or "") .. ns.Money(res.profit) .. (res.bought > 0 and r.kind ~= "quest" and (" (sold " .. res.sold .. " of " .. res.bought .. ")") or "")
+	elseif st == "partial" and res then
+		return "So far " .. (res.profit >= 0 and "+" or "") .. ns.Money(res.profit) .. " (sold " .. res.sold .. " of " .. res.bought .. ")"
+	elseif st == "unconfirmed" then
+		return "Result unconfirmed (couldn't match the purchase or the sale)"
+	elseif st == "expired" then
+		return "Tracking ended: nothing sold within 14 days"
+	elseif st == "abandoned" then
+		return "Stopped tracking"
+	end
+	local bought = 0
+	for _, u in ipairs(r.units) do bought = bought + u.qty end
+	return "Tracking since " .. Ago(now - r.acceptedAt) .. (bought > 0 and (" · bought " .. bought) or "")
 end
 
 local function Header(plan, ctx)
@@ -222,6 +267,12 @@ local function Header(plan, ctx)
 	local st = ns.Prices.Status()
 	Line(st.note or ("Prices from " .. (st.source or "?")), "GameFontHighlightSmall", st.note and 1 or 0.6, st.note and 0.7 or 0.6, st.note and 0.3 or 0.65)
 	for _, n in ipairs(plan.notes or {}) do Line(n, "GameFontDisableSmall", 1, 0.5, 0.3) end
+	local goal = ns.Tracker and ns.Tracker.Goal()
+	if goal then
+		Line("Savings goal " .. ns.MoneyShort(ns.cdb.goal) .. ": " .. (goal.remaining == 0 and "reached!" or (ns.MoneyShort(goal.remaining) .. " to go" ..
+			(goal.sessionsLeft and (", about " .. goal.sessionsLeft .. " sessions like your last ones") or " (needs 3 play sessions to estimate)"))),
+			"GameFontHighlightSmall", 0.55, 0.85, 0.55)
+	end
 	Line("Planned: " .. plan.minutes .. " of " .. Settings().sessionMinutes .. " min, " .. ns.Money(plan.spent) .. " of gold.",
 		"GameFontDisableSmall", 0.6, 0.6, 0.65)
 end
@@ -286,6 +337,15 @@ function UI.Build()
 		Line("Profession tips unavailable: " .. tostring(blocks), "GameFontDisableSmall", 1, 0.5, 0.3)
 	end
 
+	local recs = ns.Tracker and ns.Tracker.Records() or {}
+	if #recs > 0 then
+		Section("Your tracked tips")
+		for i = #recs, math.max(1, #recs - 7), -1 do
+			local r = recs[i]
+			Line((r.title or "?") .. "  —  " .. UI.TrackText(r), "GameFontHighlightSmall", 0.8, 0.85, 0.95)
+		end
+	end
+
 	Section("Skip")
 	if #plan.skip == 0 then Line("Nothing skipped.", "GameFontDisableSmall", 0.7, 0.7, 0.7) end
 	for _, e in ipairs(plan.skip) do
@@ -312,7 +372,7 @@ end
 ns.On("PLAYER_REGEN_ENABLED", function()
 	if combatPending then combatPending = false; UI.Refresh() end
 end)
-for _, ev in ipairs({ "PLAYER_MONEY", "CHAR_CHANGED", "ITEM_READY", "SCAN_DONE", "DISCOVER_DONE", "ITEM_REFRESHED" }) do
+for _, ev in ipairs({ "PLAYER_MONEY", "CHAR_CHANGED", "ITEM_READY", "SCAN_DONE", "DISCOVER_DONE", "ITEM_REFRESHED", "TRACK_CHANGED", "RECIPES_CHANGED", "VENDORS_SEEN" }) do
 	ns.On(ev, function() UI.Refresh() end)
 end
 win:SetScript("OnShow", function() ns.Char.Refresh(); UI.Refresh(true) end)

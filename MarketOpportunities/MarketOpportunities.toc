@@ -20,6 +20,7 @@ Logic\History.lua
 Logic\Discover.lua
 Logic\Path.lua
 Logic\Raid.lua
+Logic\Track.lua
 Logic\Build.lua
 Data\Opportunities.lua
 Data\Raids.lua
@@ -28,6 +29,7 @@ Adapters\Scan.lua
 Adapters\Observe.lua
 Adapters\Recipes.lua
 Adapters\Skill.lua
+Adapters\Tracker.lua
 Gen\Quests.lua
 Gen\Vendor.lua
 Gen\Crafts.lua

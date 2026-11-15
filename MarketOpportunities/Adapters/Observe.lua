@@ -77,5 +77,6 @@ ns.On("QUEST_TURNED_IN", function(questID, _, money)
 	q.seenAt = time()
 	q.faction = ns.Char and ns.Char.Get().faction or q.faction
 	ns.db.quests[questID] = q
+	ns.Fire("QUEST_REWARD_SEEN", q.name, money or pending.money or 0)
 	pending = {}
 end)

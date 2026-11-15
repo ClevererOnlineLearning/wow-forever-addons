@@ -39,7 +39,7 @@ local function questCandidate(q)
 	for _, u in ipairs(q.unverified or {}) do table.insert(unverified, u) end
 	return {
 		id = "quest:" .. q.name .. ":" .. (q.faction or "both"),
-		kind = "quest",
+		kind = "quest", questName = q.name,
 		title = "Hand in: " .. q.name,
 		why = "Repeatable quest pays " .. (q.money / 100) .. "s per hand-in" ..
 			(q.rep and (" plus " .. q.rep.amount .. " " .. q.rep.name .. " reputation, until " .. q.rep.rank) or "") ..
@@ -92,7 +92,7 @@ Gen.Register("quests", function(ctx)
 					buyBelow = #(o.inputs or {}) == 1 and math.floor(o.money / i.qty) or nil }
 			end
 			table.insert(out, {
-				id = "quest:seen:" .. name, kind = "quest", title = "Hand in: " .. name,
+				id = "quest:seen:" .. name, kind = "quest", questName = name, title = "Hand in: " .. name,
 				why = "You've handed this in " .. o.completions .. " times; it pays " .. ns.Money(o.money) .. " each time.",
 				inputs = inputs, outputs = {}, money = o.money, handsOnMinutes = 10, waitDays = 0,
 				unverified = { "quest still offered to you" },
