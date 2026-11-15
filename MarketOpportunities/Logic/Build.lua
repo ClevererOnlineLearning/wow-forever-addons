@@ -12,7 +12,7 @@ function ns.BuildPlan(ctx, settings)
 		cut = settings.cut or 0.05, horizonDays = settings.horizonDays or 3,
 		realmShare = settings.realmShare or 1 / 3,
 		char = ctx.char, standing = ctx.standing, trustOf = ctx.trustOf, deposit = ctx.deposit,
-		scanAgeMin = ctx.scanAgeMin, now = ctx.now,
+		scanAgeMin = ctx.scanAgeMin, now = ctx.now, stale = ctx.stale,
 	}
 	local evals = {}
 	for _, c in ipairs(cands) do

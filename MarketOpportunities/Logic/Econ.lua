@@ -132,6 +132,9 @@ function E.Evaluate(c, priceOf, env)
 		r.returnClass = (c.payoutVerified == false or c.speculative) and "speculative" or "guaranteed"
 	elseif thin or c.speculative then
 		r.returnClass = "speculative"
+	elseif stale or env.stale then
+		r.returnClass = "speculative" -- old prices: check them before acting (spec §7.3)
+		r.staleData, r.staleNote = true, "prices may be out of date"
 	else
 		r.returnClass = "expected"
 	end

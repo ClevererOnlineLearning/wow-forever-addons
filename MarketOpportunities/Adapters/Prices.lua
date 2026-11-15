@@ -128,3 +128,16 @@ end
 ns.On("ITEM_DATA_LOAD_RESULT", function(itemID, success)
 	if success ~= false then ns.Fire("ITEM_READY", itemID) end
 end)
+
+-- Records TSM values for the watch-list into price history, so stale TSM data can be spotted
+-- (unchanged for days while items normally sell). Cheap: about 15 items.
+function P.RecordWatch(store, now)
+	if not TSM_API then return end
+	for _, id in ipairs(ns.Data and ns.Data.Watch or {}) do
+		local s = "i:" .. id
+		ns.History.Record(store, id, "tsmMarket", tsm("DBMarket", s), now)
+		ns.History.Record(store, id, "tsmMinBuyout", tsm("DBMinBuyout", s), now)
+		ns.History.Record(store, id, "tsmRecent", tsm("DBRecent", s), now)
+		ns.History.Record(store, id, "tsmHistorical", tsm("DBHistorical", s), now)
+	end
+end

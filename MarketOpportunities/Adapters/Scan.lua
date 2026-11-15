@@ -261,3 +261,12 @@ function S.AgeMin(itemID)
 	local t = (s.itemAt and s.itemAt[itemID]) or (s.summary and s.summary[itemID] and s.scannedAt)
 	return t and math.floor((time() - t) / 60) or nil
 end
+
+-- Deposit for posting qty of a commodity for 12 hours, from the client (nil = unknown, Econ estimates).
+-- Non-commodity items need a bag location, so they stay estimated.
+function S.Deposit(itemID, qty)
+	if not (S.ahOpen and C_AuctionHouse and C_AuctionHouse.CalculateCommodityDeposit) then return nil end
+	local ok, v = pcall(C_AuctionHouse.CalculateCommodityDeposit, itemID, 1, qty)
+	if ok and type(v) == "number" and v >= 0 then return v end
+	return nil
+end

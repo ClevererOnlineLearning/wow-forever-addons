@@ -92,3 +92,23 @@ def test_toggle_does_not_open_in_combat():
     e.g._combat = True
     e.ns.UI.Toggle()
     assert not win.shown
+
+
+def test_ah_panel_shows_with_plan_buys():
+    e = game()
+    e.execute("C_AuctionHouse = { ReplicateItems = function() end, GetReplicateItemInfo = function() end, GetNumReplicateItems = function() return 0 end }")
+    e.g._fire("AUCTION_HOUSE_SHOW")
+    panel = e.g.MarketOpportunitiesAHPanel
+    assert panel.shown
+    assert e.g._textsContaining("Mote of Unstable Magic: lowest not seen, buy below 13s") == 1
+    assert e.g._textsContaining("No scan yet") >= 1
+    e.g._fire("AUCTION_HOUSE_CLOSED")
+    assert not panel.shown
+
+
+def test_plan_header_without_scan():
+    e = game()
+    win = e.g.MarketOpportunitiesWindow
+    win.Hide(win)
+    e.ns.UI.Toggle()
+    assert e.g._textsContaining("No scan yet") == 1

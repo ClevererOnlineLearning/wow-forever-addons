@@ -116,7 +116,7 @@ local function Tip(e, priceOf)
 	local c = e.candidate
 	local top = cursor
 	cursor = cursor - 4
-	Line(c.title, "GameFontNormal", 1, 1, 1, PAD + 4)
+	Line(c.itemID and (c.title .. ": " .. ItemName(c.itemID)) or c.title, "GameFontNormal", 1, 1, 1, PAD + 4)
 	local k = CLASS[e.returnClass] or CLASS.speculative
 	local nums = Numbers(e)
 	if e.thin or e.staleData then nums = nums .. " (price unreliable)" end
@@ -133,6 +133,7 @@ local function Tip(e, priceOf)
 	if e.checks and #e.checks > 0 then
 		Line("Check first: " .. table.concat(e.checks, "; "), "GameFontHighlightSmall", 1, 0.7, 0.3, PAD + 4)
 	end
+	if e.staleNote then Line("Prices may be out of date: check them at the Auction House first.", "GameFontHighlightSmall", 1, 0.6, 0.3, PAD + 4) end
 	if e.returnClass == "speculative" then
 		Line("Risky: depends on future demand or thin data. Only from your risk budget.", "GameFontDisableSmall", 1, 0.5, 0.15, PAD + 4)
 	end
@@ -145,6 +146,25 @@ end
 ------------------------------------------------------------------------
 -- Building the plan from live data
 ------------------------------------------------------------------------
+-- TSM looks stale when the watch-list prices haven't moved for days (checked every 10 minutes)
+local lastWatch = 0
+function UI.TsmStale(now)
+	if not (ns.db and TSM_API) then return false end
+	ns.db.history = ns.db.history or {}
+	if now - lastWatch > 600 then
+		lastWatch = now
+		ns.Prices.RecordWatch(ns.db.history, now)
+	end
+	return ns.History.TsmStale(ns.db.history, ns.Data.Watch, now)
+end
+
+local function Ago(sec)
+	if sec < 3600 then return math.max(1, math.floor(sec / 60)) .. " min ago" end
+	if sec < 172800 then return math.floor(sec / 3600) .. " h ago" end
+	return math.floor(sec / 86400) .. " days ago"
+end
+UI.Ago = Ago
+
 local function Context()
 	local cache = {}
 	local function priceOf(id)
@@ -156,6 +176,7 @@ local function Context()
 	return {
 		char = ns.Char.Get(), priceOf = priceOf, now = now, standing = ns.Char.Standing,
 		scan = scan, scanAgeMin = scan and scan.scannedAt and math.floor((now - scan.scannedAt) / 60) or nil,
+		deposit = ns.Scan and ns.Scan.Deposit, stale = UI.TsmStale(now),
 	}
 end
 
@@ -176,6 +197,14 @@ local function Header(plan, ctx)
 		Line("Raids in " .. r.days .. " days (" .. tonumber(d) .. " " .. m[tonumber(mo)] .. ": " .. r.name ..
 			(r.status == "assumed" and ", date assumed" or "") .. ")", "GameFontHighlightSmall", 0.85, 0.85, 0.85)
 	end
+	local sc = ctx.scan
+	if sc and sc.scannedAt then
+		Line("Last scan: " .. Ago(ctx.now - sc.scannedAt) .. (sc.complete and "" or " (incomplete)"), "GameFontHighlightSmall", 0.75, 0.75, 0.8)
+	else
+		Line("No scan yet — prices from " .. (ns.Prices.Status().source or "nothing") .. ". Scan at the Auction House for buy tips.",
+			"GameFontHighlightSmall", 0.75, 0.75, 0.8)
+	end
+	if ctx.stale then Line("TSM prices haven't changed for days: likely tips are marked as guesses until they update.", "GameFontHighlightSmall", 1, 0.5, 0.3) end
 	local st = ns.Prices.Status()
 	Line(st.note or ("Prices from " .. (st.source or "?")), "GameFontHighlightSmall", st.note and 1 or 0.6, st.note and 0.7 or 0.6, st.note and 0.3 or 0.65)
 	for _, n in ipairs(plan.notes or {}) do Line(n, "GameFontDisableSmall", 1, 0.5, 0.3) end
@@ -209,7 +238,8 @@ function UI.Build()
 	Section("Skip")
 	if #plan.skip == 0 then Line("Nothing skipped.", "GameFontDisableSmall", 0.7, 0.7, 0.7) end
 	for _, e in ipairs(plan.skip) do
-		Line((e.candidate.title or "?") .. "  —  " .. (e.skipReason or "?"), "GameFontHighlightSmall", 0.8, 0.8, 0.8)
+		local c = e.candidate
+		Line((c.itemID and (c.title .. ": " .. ItemName(c.itemID)) or c.title or "?") .. "  —  " .. (e.skipReason or "?"), "GameFontHighlightSmall", 0.8, 0.8, 0.8)
 	end
 	content:SetHeight(-cursor + 10)
 end

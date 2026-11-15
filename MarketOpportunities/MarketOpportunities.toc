@@ -25,3 +25,4 @@ Adapters\Scan.lua
 Gen\Quests.lua
 Gen\Vendor.lua
 UI\Plan.lua
+UI\AHPanel.lua
