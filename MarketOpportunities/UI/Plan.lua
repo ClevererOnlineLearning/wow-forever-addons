@@ -387,8 +387,28 @@ local function Slash(msg)
 	local id = msg:match("^price%s+(%d+)$")
 	if id then PriceDebug(tonumber(id)); return end
 	if msg == "30" or msg == "60" then Settings().sessionMinutes = tonumber(msg); SessionText(); UI.Refresh(true); return end
+	if msg == "recipes" then
+		local c = ns.db.recipes or {}
+		local parts = {}
+		for line, p in pairs(ns.Char.Get().professions or {}) do
+			local cov = ns.Recipes.Coverage(line)
+			parts[#parts + 1] = p.name .. " " .. cov.found
+		end
+		ns.Print("recipes known for build " .. tostring(c.build) .. ": " .. (#parts > 0 and table.concat(parts, ", ") or "none yet") ..
+			(c.complete and " (search complete)" or (ns.IsRunning("recipes") and " (searching...)" or "")) ..
+			(c.walkSkipped and " (search skipped: open profession windows)" or ""))
+		return
+	end
+	if msg == "recipes bench" then
+		ns.Recipes.Bench(10000, function(b)
+			ns.Print(("%.2f microseconds per ID; a full search would take about %d s in the background."):format(b.usPerId, math.floor(b.projectedSeconds)))
+		end)
+		return
+	end
+	if msg == "recipes stop" then ns.Recipes.Stop(); ns.Print("recipe search stopped (it carries on after /reload)."); return end
+	if msg == "recipes rebuild" then ns.Recipes.Rebuild(); ns.Print("searching all recipes again in the background."); return end
 	if msg == "" then UI.Toggle(); return end
-	ns.Print("/mo  open tonight's plan   ·   /mo 30 or /mo 60  session length   ·   /mo price <itemID>  price check")
+	ns.Print("/mo  open tonight's plan   ·   /mo 30 or /mo 60  session length   ·   /mo price <itemID>   ·   /mo recipes [bench | stop | rebuild]")
 end
 
 ns.On("PLAYER_LOGIN", function()
