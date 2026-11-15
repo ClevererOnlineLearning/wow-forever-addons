@@ -65,13 +65,16 @@ function P.Get(itemID, noRequest)
 	p.atrPrice = usable(atr("GetAuctionPriceByItemID", itemID))
 	p.atrAgeDays = p.atrPrice and atr("GetAuctionAgeByItemID", itemID) or nil
 
+	-- Auctionator's price is its last-seen lowest buyout: it fills each missing field on its own
 	local atrUsed = false
-	if p.atrPrice and not (p.market or p.minBuyout) then
-		-- Auctionator's price is its last-seen lowest buyout: it stands in for both
-		p.market, p.minBuyout = p.atrPrice, p.atrPrice
-		p.marketFromAtr = true -- so the benchmark doesn't count Auctionator twice
-		atrUsed = true
-		if p.atrAgeDays and p.atrAgeDays >= STALE_DAYS then p.stale = true end
+	if p.atrPrice then
+		if not p.market then
+			p.market = p.atrPrice
+			p.marketFromAtr = true -- so the benchmark doesn't count Auctionator twice
+			atrUsed = true
+		end
+		if not p.minBuyout then p.minBuyout = p.atrPrice; atrUsed = true end
+		if atrUsed and p.atrAgeDays and p.atrAgeDays >= STALE_DAYS then p.stale = true end
 	end
 	if atrUsed then
 		p.source = tsmUsed and "TSM+Auctionator" or "Auctionator"

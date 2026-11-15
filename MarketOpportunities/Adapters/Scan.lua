@@ -35,23 +35,6 @@ local function watchSet()
 	return w
 end
 
--- Remember observed prices for the watch-list and the most valuable items with real listings
-local function recordHistory(summary, t)
-	ns.db.history = ns.db.history or {}
-	local watch, pick = watchSet(), {}
-	for id, s in pairs(summary) do
-		if watch[id] then
-			ns.History.Record(ns.db.history, id, "observed", s.min, t)
-		elseif s.min and s.min >= 100 and s.listings >= 2 then
-			pick[#pick + 1] = { id = id, v = s.min * math.min(s.totalQty, 20) }
-		end
-	end
-	table.sort(pick, function(a, b) return a.v > b.v end)
-	for i = 1, math.min(#pick, HISTORY_CAP) do
-		ns.History.Record(ns.db.history, pick[i].id, "observed", summary[pick[i].id].min, t)
-	end
-end
-
 -- What is saved between sessions: the summary for items we keep history for (not all 30k items)
 local function trimmed(summary)
 	local keep = {}
@@ -75,7 +58,7 @@ local function discover(scan)
 	local budget = ns.Budget.Compute(char.gold or 0, settings.budget)
 	local env = { realmShare = settings.realmShare or 1 / 3, horizonDays = 3, scannedAt = scan.scannedAt }
 	local now = time()
-	local function histOf(id) return ns.db.history and ns.History.Median(ns.db.history, id, 14, now) end
+	local function histOf(id) return ns.db.history and ns.History.OwnMedian(ns.db.history, id, 14, now, scan.scannedAt) end
 	local function priceOf(id) return ns.Prices.Get(id, true) end -- true: don't ask the server for 30k items
 	local i, out = 1, {}
 	ns.Run("discover", function(ms)
@@ -85,7 +68,7 @@ local function discover(scan)
 				out[#out + 1] = c
 			end
 			i = i + 1
-			if i % 20 == 0 and debugprofilestop() - t0 >= ms then return false end
+			if i % 2 == 0 and debugprofilestop() - t0 >= ms then return false end
 		end
 		scan.candidates = out
 		if ns.db.scan and ns.db.scan.scannedAt == scan.scannedAt then
@@ -100,30 +83,86 @@ local function discover(scan)
 end
 S.Discover = discover
 
-local function finish(complete)
-	local r = reading
+-- The end of a scan, in phases spread over frames (review finding 9):
+-- read rows -> per-item summary -> pick items worth remembering -> record history -> compact -> save
+local function done(r)
 	reading = nil
-	if not r then return true end
-	local t = time()
-	current = { summary = r.agg:Result(), scannedAt = t, complete = complete, rows = r.i, total = r.total }
-	if complete then recordHistory(current.summary, t) end
-	ns.db.scan = { summary = trimmed(current.summary), scannedAt = t, complete = complete, rows = r.i, total = r.total }
-	if complete then
+	local t = r.t
+	local prev = current or (ns.db and ns.db.scan)
+	current = { summary = r.summary, scannedAt = t, complete = r.complete, rows = r.i, total = r.total }
+	if r.complete then
+		ns.db.scan = { summary = trimmed(current.summary), scannedAt = t, complete = true, rows = r.i, total = r.total }
 		ns.Print("Auction House read: " .. r.i .. " auctions.")
 	else
+		-- an interrupted scan never replaces the tips of a recent complete one (review minor 10)
+		if prev and prev.complete and prev.candidates and t - (prev.scannedAt or 0) < 7200 then
+			current.candidates, current.candidatesFrom = prev.candidates, prev.scannedAt
+		end
 		ns.Print("Auction House scan stopped at " .. r.i .. " of " .. r.total .. " auctions (incomplete).")
 	end
 	ns.Fire("SCAN_DONE", current)
-	if complete then discover(current) end
+	if r.complete then discover(current) end
 	return true
 end
 
-local function step(budget)
-	if not S.ahOpen then return finish(false) end
+local function finishStep(r, budget, t0)
+	local function over() return debugprofilestop() - t0 >= budget end
+	while true do
+		if r.phase == "result" then
+			if r.agg:ResultStep(r.summary, 50) then r.phase = r.complete and "pick" or "done" end
+		elseif r.phase == "pick" then
+			local k = r.pickKey
+			for _ = 1, 100 do
+				local s
+				k, s = next(r.summary, k)
+				if k == nil then break end
+				if r.watch[k] then
+					ns.History.Record(ns.db.history, k, "observed", s.min, r.t)
+				elseif s.min and s.min >= 100 and s.listings >= 2 then
+					r.pick[#r.pick + 1] = { id = k, v = s.min * math.min(s.totalQty, 20) }
+				end
+			end
+			r.pickKey = k
+			if k == nil then r.phase = "sort" end
+		elseif r.phase == "sort" then
+			table.sort(r.pick, function(a, b) return a.v > b.v end)
+			r.phase, r.ri = "record", 1
+			return false -- the sort gets a frame of its own
+		elseif r.phase == "record" then
+			local stop = math.min(#r.pick, HISTORY_CAP, r.ri + 99)
+			for i = r.ri, stop do
+				ns.History.Record(ns.db.history, r.pick[i].id, "observed", r.summary[r.pick[i].id].min, r.t)
+			end
+			r.ri = stop + 1
+			if r.ri > math.min(#r.pick, HISTORY_CAP) then r.phase = "compact" end
+		elseif r.phase == "compact" then
+			ns.History.Compact(ns.db.history, r.t)
+			r.phase = "done"
+			return false
+		else
+			return done(r)
+		end
+		if over() then return false end
+	end
+end
+
+local function finish(complete)
 	local r = reading
 	if not r then return true end
-	local get = C_AuctionHouse.GetReplicateItemInfo
+	if r.phase then return false end
+	r.phase, r.complete, r.t, r.summary, r.pick = "result", complete, time(), {}, {}
+	ns.db.history = ns.db.history or {}
+	r.watch = watchSet()
+	return false
+end
+
+local function step(budget)
+	local r = reading
+	if not r then return true end
 	local t0 = debugprofilestop()
+	if r.phase then return finishStep(r, budget, t0) end
+	if not S.ahOpen then finish(false); return finishStep(r, budget, t0) end
+	local get = C_AuctionHouse.GetReplicateItemInfo
 	local n = 0
 	while r.i < r.total do
 		local _, _, count, _, _, _, _, _, _, buyout, _, _, _, _, _, _, itemID = get(r.i)
@@ -133,8 +172,18 @@ local function step(budget)
 		if n % CHECK_EVERY == 0 and debugprofilestop() - t0 >= budget then break end
 	end
 	ns.Fire("SCAN_PROGRESS", S.Progress())
-	if r.i >= r.total then return finish(true) end
+	if r.i >= r.total then finish(true) end
 	return false
+end
+
+-- A failed step (e.g. the server stopped answering) ends the scan as incomplete (review finding 2)
+local function stepFailed()
+	local r = reading
+	if not r then return end
+	if not r.summary then r.summary = r.agg:Result() end
+	r.complete = false
+	pcall(done, r)
+	reading = nil
 end
 
 local waiting = false
@@ -163,7 +212,11 @@ ns.On("REPLICATE_ITEM_LIST_UPDATE", function()
 	waiting = false
 	local total = C_AuctionHouse.GetNumReplicateItems() or 0
 	reading = { agg = ns.Discover.NewAggregator(), i = 0, total = total }
-	ns.Run("scan", step, 4)
+	ns.Run("scan", step, 4, stepFailed)
+end)
+
+ns.On("MO_READY", function()
+	if ns.db.history then pcall(ns.History.Compact, ns.db.history, time()) end
 end)
 
 ns.On("AUCTION_HOUSE_SHOW", function() S.ahOpen = true; ns.Fire("AH_STATE", true) end)
@@ -253,6 +306,19 @@ ns.On("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
 	updateItem(id, units)
 	sendNext()
 end)
+
+-- A price from "Check plan prices" (under 30 minutes old): unit cost of the cheapest qty and how
+-- many are listed. nil when there is no fresh search for the item.
+function S.Fresh(itemID, qty)
+	local s = current
+	local at = s and s.itemAt and s.itemAt[itemID]
+	if not at or time() - at > 1800 then return nil end
+	local sum = s.summary and s.summary[itemID]
+	if not sum or not sum.min then return nil, 0 end
+	local cost, got = ns.Discover.CostOf(sum, qty)
+	if got <= 0 then return nil, 0 end
+	return math.ceil(cost / got), sum.totalQty
+end
 
 -- Age of the price we have for an item, in minutes (nil when never seen)
 function S.AgeMin(itemID)

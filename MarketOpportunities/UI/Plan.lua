@@ -103,6 +103,11 @@ local function Payout(e)
 end
 
 local function Numbers(e)
+	if e.returnClass == "guaranteed" and e.exactHidden then
+		local c = e.candidate
+		local payout = (c.money or 0)
+		return "pays " .. ns.Money(payout) .. " (profit depends on today's price: see 'below')"
+	end
 	if e.returnClass == "guaranteed" then
 		return "+" .. ns.Money(e.net)
 	end
@@ -123,7 +128,9 @@ local function Tip(e, priceOf)
 	Line(k[1] .. "  " .. nums, "GameFontHighlight", k[2], k[3], k[4], PAD + 4)
 	for _, inp in ipairs(c.inputs or {}) do
 		local p = priceOf(inp.itemID)
-		local now = p and p.minBuyout and (" (lowest now " .. ns.Money(p.minBuyout) .. ")") or ""
+		local fresh = ns.Scan and ns.Scan.Fresh and ns.Scan.Fresh(inp.itemID, 1)
+		local low = fresh or (p and p.minBuyout)
+		local now = low and (" (lowest " .. (fresh and "just checked " or "now ") .. ns.Money(low) .. ")") or ""
 		local below = inp.buyBelow and (" below " .. ns.Money(inp.buyBelow) .. " each") or ""
 		Line("Buy " .. inp.qty .. " x " .. ItemName(inp.itemID) .. below .. now, "GameFontHighlightSmall", 0.9, 0.9, 0.9, PAD + 4)
 	end
@@ -176,7 +183,7 @@ local function Context()
 	return {
 		char = ns.Char.Get(), priceOf = priceOf, now = now, standing = ns.Char.Standing,
 		scan = scan, scanAgeMin = scan and scan.scannedAt and math.floor((now - scan.scannedAt) / 60) or nil,
-		deposit = ns.Scan and ns.Scan.Deposit, stale = UI.TsmStale(now),
+		deposit = ns.Scan and ns.Scan.Deposit, stale = UI.TsmStale(now), fresh = ns.Scan and ns.Scan.Fresh,
 	}
 end
 

@@ -110,6 +110,23 @@ function H.Median(store, itemID, days, now)
 	return median(v)
 end
 
+-- Median of this add-on's own observations only (spec §19.1 "own" group): at least 3 points on at
+-- least 2 separate days; points taken at excludeT (the scan being judged) are left out.
+function H.OwnMedian(store, itemID, days, now, excludeT)
+	local s = store[itemID]
+	if not s then return nil end
+	local vals, seenDays, nd = {}, {}, 0
+	for _, p in ipairs(s.pts) do
+		if p.k == "observed" and p.t >= now - days * DAY and p.t ~= excludeT then
+			vals[#vals + 1] = p.v
+			local d = math.floor(p.t / DAY)
+			if not seenDays[d] then seenDays[d] = true; nd = nd + 1 end
+		end
+	end
+	if #vals < 3 or nd < 2 then return nil end
+	return median(vals)
+end
+
 -- A price move worth acting on: recent (3 days) vs the 14-day baseline before it
 function H.Move(store, itemID, now, thin)
 	local s = store[itemID]

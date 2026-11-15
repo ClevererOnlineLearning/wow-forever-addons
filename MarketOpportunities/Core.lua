@@ -70,13 +70,14 @@ end)
 ------------------------------------------------------------------------
 local jobs = {}
 
-function ns.Run(name, step, budgetMs)
+function ns.Run(name, step, budgetMs, onError)
 	ns.Cancel(name)
 	jobs[name] = C_Timer.NewTicker(0, function(ticker)
 		if InCombatLockdown() then return end
 		local ok, done = pcall(step, budgetMs or 4)
 		if not ok then
 			ns.Print("stopped " .. name .. ": " .. tostring(done))
+			if onError then pcall(onError, done) end
 			done = true
 		end
 		if done then

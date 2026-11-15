@@ -45,16 +45,31 @@ function Agg:Add(itemID, count, buyout)
 	end
 end
 
+local function entry(s)
+	return {
+		min = s.lows[1], second = s.lows[2], third = s.lows[3],
+		qtyAtMin = s.levels[1] and s.levels[1].q or 0,
+		totalQty = s.totalQty, listings = s.listings, levels = s.levels,
+	}
+end
+
 function Agg:Result()
 	local out = {}
-	for id, s in pairs(self.items) do
-		out[id] = {
-			min = s.lows[1], second = s.lows[2], third = s.lows[3],
-			qtyAtMin = s.levels[1] and s.levels[1].q or 0,
-			totalQty = s.totalQty, listings = s.listings, levels = s.levels,
-		}
-	end
+	for id, s in pairs(self.items) do out[id] = entry(s) end
 	return out
+end
+
+-- The same, a few items at a time: call until it returns true (out is filled in place)
+function Agg:ResultStep(out, n)
+	local k = self.cursor
+	for _ = 1, n do
+		local s
+		k, s = next(self.items, k)
+		if k == nil then self.cursor = nil; return true end
+		out[k] = entry(s)
+	end
+	self.cursor = k
+	return false
 end
 
 -- Units listed strictly below a unit price (from the kept price levels)

@@ -60,11 +60,16 @@ function E.Evaluate(c, priceOf, env)
 	local cost, capital, stale = 0, 0, false
 	for _, inp in ipairs(c.inputs or {}) do
 		local p = priceOf(inp.itemID)
-		if p and p.stale then stale = true end
+		if p and p.stale then stale = true; r.staleInput = true end
+		local fresh, freshQty
+		if env.fresh then fresh, freshQty = env.fresh(inp.itemID, inp.qty) end
+		if env.fresh and freshQty ~= nil and freshQty <= 0 and fromList(inp.from)[1] == "ah" and #fromList(inp.from) == 1 then
+			r.ok, r.reason = false, "no listings left at a useful price"; return r
+		end
 		local best, bestFrom
 		for _, from in ipairs(fromList(inp.from)) do
 			local u
-			if from == "ah" then u = inp.unitPrice or (p and p.minBuyout)
+			if from == "ah" then u = fresh or inp.unitPrice or (p and p.minBuyout)
 			elseif from == "vendor" then u = inp.vendorPrice
 			elseif from == "owned" then u = p and (salePrice({}, p) and floor(salePrice({}, p) * (1 - cut)) or p.vendorSell)
 			end
@@ -79,6 +84,7 @@ function E.Evaluate(c, priceOf, env)
 			local dup = false
 			for _, x in ipairs(r.checks) do if x == chk then dup = true end end
 			if not dup then r.checks[#r.checks + 1] = chk end
+			if freshQty and freshQty < inp.qty then r.checks[#r.checks + 1] = "only " .. freshQty .. " left at that price" end
 		elseif bestFrom == "vendor" and inp.limited then
 			r.checks[#r.checks + 1] = "vendor stock"
 		end
@@ -103,7 +109,7 @@ function E.Evaluate(c, priceOf, env)
 			if not price then r.ok, r.reason = false, "not enough data"; return r end
 			local spd = p and p.regionSoldPerDay
 			trust = env.trustOf and env.trustOf(out.itemID) or NO_EVIDENCE_TRUST
-			if not spd or spd < 1 or not (p.numAuctions and p.numAuctions >= 3) or out.thin then thin = true end
+			if not spd or spd < 1 or not (p.numAuctions and p.numAuctions >= 3) or out.thin or not p.regionSaleRate then thin = true end
 			if trust <= NO_EVIDENCE_TRUST and (not spd or spd < 2) then thin = true end
 			local ps = ((p and p.regionSaleRate) or 0) * trust
 			if spd and spd < 2 then ps = ps * spd / 2 end
@@ -140,6 +146,8 @@ function E.Evaluate(c, priceOf, env)
 		r.returnClass = "expected"
 	end
 
+	-- a sure payout bought with an old price: show the payout and the break-even, not an exact profit
+	if r.returnClass == "guaranteed" and r.staleInput then r.exactHidden = true end
 	if r.returnClass == "guaranteed" then
 		r.confidence = #r.checks > 0 and 0.85 or 1.0
 	elseif r.returnClass == "expected" then
