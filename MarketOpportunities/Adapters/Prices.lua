@@ -28,11 +28,11 @@ local function atr(fn, id)
 	return tonumber(v)
 end
 
-local function vendorSellOf(id)
+local function vendorSellOf(id, noRequest)
 	if not (C_Item and C_Item.GetItemInfo) then return nil end
 	local ok, name, _, _, _, _, _, _, _, _, _, sell = pcall(C_Item.GetItemInfo, id)
 	if ok and name then return tonumber(sell) end
-	if C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
+	if not noRequest and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
 	return nil
 end
 
@@ -43,7 +43,7 @@ local function remember(r)
 	if #recent > 5 then table.remove(recent, 1) end
 end
 
-function P.Get(itemID)
+function P.Get(itemID, noRequest)
 	local s = "i:" .. itemID
 	local p = { tsmInstalled = TSM_API ~= nil }
 	local tsmUsed = false
@@ -69,6 +69,7 @@ function P.Get(itemID)
 	if p.atrPrice and not (p.market or p.minBuyout) then
 		-- Auctionator's price is its last-seen lowest buyout: it stands in for both
 		p.market, p.minBuyout = p.atrPrice, p.atrPrice
+		p.marketFromAtr = true -- so the benchmark doesn't count Auctionator twice
 		atrUsed = true
 		if p.atrAgeDays and p.atrAgeDays >= STALE_DAYS then p.stale = true end
 	end
@@ -78,7 +79,7 @@ function P.Get(itemID)
 		p.source = "TSM"
 	end
 
-	p.vendorSell = vendorSellOf(itemID) or (TSM_API and tsm("VendorSell", s)) or nil
+	p.vendorSell = vendorSellOf(itemID, noRequest) or (TSM_API and tsm("VendorSell", s)) or nil
 
 	remember({ tsm = tsmUsed and (p.market or p.minBuyout) ~= nil and not atrUsed, atr = atrUsed, source = p.source, age = atrUsed and p.atrAgeDays or nil })
 	if not p.source and not p.vendorSell then return nil end

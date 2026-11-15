@@ -64,6 +64,42 @@ local function trimmed(summary)
 	return keep
 end
 
+-- After a complete scan: look for tips item by item, a few milliseconds per frame
+local function discover(scan)
+	local ids = {}
+	for id, s in pairs(scan.summary) do
+		if s.min and s.min > 0 then ids[#ids + 1] = id end
+	end
+	local char = ns.Char and ns.Char.Get() or {}
+	local settings = ns.cdb and ns.cdb.settings or {}
+	local budget = ns.Budget.Compute(char.gold or 0, settings.budget)
+	local env = { realmShare = settings.realmShare or 1 / 3, horizonDays = 3, scannedAt = scan.scannedAt }
+	local now = time()
+	local function histOf(id) return ns.db.history and ns.History.Median(ns.db.history, id, 14, now) end
+	local function priceOf(id) return ns.Prices.Get(id, true) end -- true: don't ask the server for 30k items
+	local i, out = 1, {}
+	ns.Run("discover", function(ms)
+		local t0 = debugprofilestop()
+		while i <= #ids do
+			for _, c in ipairs(ns.Discover.FromScan(scan.summary, priceOf, histOf, budget, env, { ids[i] })) do
+				out[#out + 1] = c
+			end
+			i = i + 1
+			if i % 20 == 0 and debugprofilestop() - t0 >= ms then return false end
+		end
+		scan.candidates = out
+		if ns.db.scan and ns.db.scan.scannedAt == scan.scannedAt then
+			ns.db.scan.candidates = out
+			for _, c in ipairs(out) do -- keep the summary of every item a tip is about
+				if c.itemID and scan.summary[c.itemID] then ns.db.scan.summary[c.itemID] = scan.summary[c.itemID] end
+			end
+		end
+		ns.Fire("DISCOVER_DONE", #out)
+		return true
+	end, 4)
+end
+S.Discover = discover
+
 local function finish(complete)
 	local r = reading
 	reading = nil
@@ -78,6 +114,7 @@ local function finish(complete)
 		ns.Print("Auction House scan stopped at " .. r.i .. " of " .. r.total .. " auctions (incomplete).")
 	end
 	ns.Fire("SCAN_DONE", current)
+	if complete then discover(current) end
 	return true
 end
 

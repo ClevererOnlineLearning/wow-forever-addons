@@ -5,6 +5,8 @@ local _, ns = ...
 function ns.BuildPlan(ctx, settings)
 	settings = settings or {}
 	local notes = {}
+	local budget = ns.Budget.Compute(ctx.char and ctx.char.gold or 0, settings.budget)
+	ctx.budget = budget
 	local cands = ns.Gen.All(ctx, notes)
 	local env = {
 		cut = settings.cut or 0.05, horizonDays = settings.horizonDays or 3,
@@ -21,7 +23,6 @@ function ns.BuildPlan(ctx, settings)
 			table.insert(notes, "could not price " .. tostring(c.title) .. ": " .. tostring(r))
 		end
 	end
-	local budget = ns.Budget.Compute(ctx.char and ctx.char.gold or 0, settings.budget)
 	local plan = ns.Rank.Plan(evals, budget, settings)
 	plan.budget = budget
 	for _, n in ipairs(notes) do table.insert(plan.notes, n) end

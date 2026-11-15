@@ -189,3 +189,24 @@ def test_targeted_refresh_updates_one_item():
     assert s.min == 900 and s.totalQty == 14
     assert list(e.g._sent.values()) == [274964, 8170]
     assert e.ns.Scan.AgeMin(274964) == 0
+
+
+def test_discovery_runs_after_scan():
+    e = Env()
+    e.execute(FAKE_AH)
+    e.execute("C_Item = { GetItemInfo = function(id) if id == 8170 then return 'Leather', nil,nil,nil,nil,nil,nil,nil,nil,nil, 500 end end, RequestLoadItemDataByID = function(id) _asked = id end }")
+    e.load("Core.lua", "Logic/History.lua", "Logic/Discover.lua", "Logic/Budget.lua", "Data/Opportunities.lua",
+           "Adapters/Prices.lua", "Adapters/Scan.lua")
+    e.g._fire("ADDON_LOADED", "MarketOpportunities")
+    e.ns.Char = e.eval("{ Get = function() return { gold = 970000 } end }")
+    e.g._now = NOW
+    e.execute("_rows = { {8170, 5, 1000}, {4444, 1, 100} }")
+    open_ah(e)
+    e.ns.Scan.Full()
+    e.g._fire("REPLICATE_ITEM_LIST_UPDATE")
+    run_frames(e, 10)
+    c = lua_list(e.ns.Scan.Last().candidates)
+    assert [x.kind for x in c] == ["belowVendor"]
+    assert lua_list(e.ns.db.scan.candidates)[0].itemID == 8170
+    assert e.ns.db.scan.summary[8170] is not None
+    assert e.g._asked is None  # discovery never floods the server with item requests

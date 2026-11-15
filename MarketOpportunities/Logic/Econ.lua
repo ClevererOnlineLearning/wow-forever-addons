@@ -52,6 +52,7 @@ end
 function E.Evaluate(c, priceOf, env)
 	local r = { candidate = c, ok = true, checks = {} }
 	local cut = env.cut or 0.05
+	if c.blocked then r.ok, r.reason = false, c.blocked; return r end
 	local reason = checkRequires(c.requires, env, r.checks)
 	if reason then r.ok, r.reason = false, reason; return r end
 
@@ -63,7 +64,7 @@ function E.Evaluate(c, priceOf, env)
 		local best, bestFrom
 		for _, from in ipairs(fromList(inp.from)) do
 			local u
-			if from == "ah" then u = p and p.minBuyout
+			if from == "ah" then u = inp.unitPrice or (p and p.minBuyout)
 			elseif from == "vendor" then u = inp.vendorPrice
 			elseif from == "owned" then u = p and (salePrice({}, p) and floor(salePrice({}, p) * (1 - cut)) or p.vendorSell)
 			end

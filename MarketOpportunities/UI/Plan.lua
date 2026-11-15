@@ -151,8 +151,11 @@ local function Context()
 		if cache[id] == nil then cache[id] = ns.Prices.Get(id) or false end
 		return cache[id] or nil
 	end
+	local now = time()
+	local scan = ns.Scan and ns.Scan.Last()
 	return {
-		char = ns.Char.Get(), priceOf = priceOf, now = time(), standing = ns.Char.Standing,
+		char = ns.Char.Get(), priceOf = priceOf, now = now, standing = ns.Char.Standing,
+		scan = scan, scanAgeMin = scan and scan.scannedAt and math.floor((now - scan.scannedAt) / 60) or nil,
 	}
 end
 
@@ -228,7 +231,7 @@ end
 ns.On("PLAYER_REGEN_ENABLED", function()
 	if combatPending then combatPending = false; UI.Refresh() end
 end)
-for _, ev in ipairs({ "PLAYER_MONEY", "CHAR_CHANGED", "ITEM_READY", "SCAN_DONE" }) do
+for _, ev in ipairs({ "PLAYER_MONEY", "CHAR_CHANGED", "ITEM_READY", "SCAN_DONE", "DISCOVER_DONE", "ITEM_REFRESHED" }) do
 	ns.On(ev, function() UI.Refresh() end)
 end
 win:SetScript("OnShow", function() ns.Char.Refresh(); UI.Refresh(true) end)

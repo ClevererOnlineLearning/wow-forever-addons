@@ -16,9 +16,10 @@ end
 function Gen.All(ctx, notes)
 	local out = {}
 	for _, g in ipairs(Gen.list) do
-		local ok, res = pcall(g.fn, ctx)
+		local ok, res, note = pcall(g.fn, ctx)
 		if ok and type(res) == "table" then
 			for _, c in ipairs(res) do table.insert(out, c) end
+			if note and notes then table.insert(notes, note) end
 		elseif not ok and notes then
 			table.insert(notes, g.name .. " tips unavailable: " .. tostring(res))
 		end

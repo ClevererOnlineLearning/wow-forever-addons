@@ -71,6 +71,7 @@ def test_tsm_present_but_nil_falls_back():
     e.execute("_installTSM(); _installAtr(); _atr = 5450; _atrAge = 4")
     p = e.ns.Prices.Get(8170)
     assert p.market == 5450 and p.minBuyout == 5450
+    assert p.marketFromAtr is True
     assert p.source == "Auctionator"
     assert p.tsmInstalled
 
