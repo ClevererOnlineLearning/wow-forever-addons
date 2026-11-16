@@ -10,7 +10,7 @@ If you share, copy or build on these, please credit **good mens**. The MIT licen
 | TargetFinder | One key finds a mob by name, optionally casts a spell, marks it; map dots for spawns; Tag mode | `/tfinder` |
 | UIFade | Fades the parts of the interface you tick (bars, unit frames, chat, minimap…), 20–100%, minimap button | `/uifade` |
 | ThreatTint | Colours nameplates by threat: who is the mob attacking, are you tanking, is it about to leave your pet | `/tint` |
-| Loot Flare | Loot shown mid-screen with rarity glows, a banner for great drops, quest progress, upgrade and sell value, gold per hour | `/lflare` |
+| Loot Flare | Loot shown mid-screen with rarity glows, a banner for great drops, quest progress, upgrade and sell value, gold per hour with AH value, loot history by zone, subzone and mob | `/lflare`, `/lflare history` |
 | PetWarn | "Pet not attacking" in fights, and "Mend Pet!" when your pet drops below 60% health | `/petwarn` |
 | Hunter's Reminder | Pulses when Trueshot Aura or Aspect of the Hawk is missing, warns when Feign Death is resisted, tracking that matches your target | `/hrem` |
 | Fastest Way To | The fastest way somewhere: flights, boats, zeppelins and zones, with real walking paths (GPL-3.0, see its `CREDITS.md`) | `/fw` |
