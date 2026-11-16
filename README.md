@@ -15,7 +15,7 @@ If you share, copy or build on these, please credit **good mens**. The MIT licen
 | Hunter's Reminder | Pulses when Trueshot Aura or Aspect of the Hawk is missing, warns when Feign Death is resisted, tracking that matches your target | `/hrem` |
 | Fastest Way To | The fastest way somewhere: flights, boats, zeppelins and zones, with real walking paths (GPL-3.0, see its `CREDITS.md`) | `/fw` |
 | RangeTint | Colours action buttons: red out of range, a pulsing teal border near the edge, purple too close, blue out of mana | `/rtint` |
-| TankFirst | Group Finder: tanks go to the top of the list with a blue glow; healers next (green) while your group has none | `/tanks` |
+| TankFirst | Group Finder: tanks go to the top with a blue glow while your group has no tank; healers next (green) while it has no healer | `/tanks` |
 | FrameCheck | FPS, frame time, how much each add-on uses, ping, and a stutter log | `/fcheck` |
 | GunSilencer | Replaces gun sounds | `/gunsilencer` |
 | SLoTe | Scrolling loot text, Forever port (see credits) | `/slote` |
