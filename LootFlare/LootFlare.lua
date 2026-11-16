@@ -19,7 +19,8 @@ local DEFAULTS = {
 	vendor = "grey", -- sell value: "off", "grey" (junk only) or "all"
 	banner = true, bannerMin = 3, edgeGlow = true,
 	gph = false, gphLoginReset = true, -- gphPos: nil = just above the action bars
-	session = { secs = 0, money = 0, items = 0 },
+	session = { secs = 0, money = 0, items = 0, ah = 0 },
+	hist = true, histData = { sessions = {}, zones = {} }, -- loot history (History.lua)
 	bagCount = true, fancy = true, growUp = true,
 	anim = "stack",
 	scale = 1.0, duration = 4, maxLines = 8,
@@ -546,16 +547,14 @@ local function Details(l, link, id, equipLoc)
 	end
 end
 
--- Vendor value of what you looted, for the gold-per-hour tracker (counted even when the
--- line itself is filtered out). Item info may need a moment, so it retries once.
-local function CountValue(link, count, retry)
-	if not (LF.AddValue and LF.db.gph and GetInfo) then return end
-	local ok, _, _, _, _, _, _, _, _, _, _, price = pcall(GetInfo, link)
-	price = ok and Num(price)
-	if price then
-		if price > 0 then LF.AddValue("items", price * count) end
-	elseif not retry and C_Timer then
-		C_Timer.After(1, function() CountValue(link, count, true) end)
+-- Vendor and AH value of what you looted, for the gold-per-hour box and the loot history
+-- (counted even when the line itself is filtered out). Where it came from is noted straight
+-- away; item info may need a moment, so it retries once.
+local function CountValue(link, count, ctx, retry)
+	if not (LF.RecordLoot and (LF.db.gph or LF.db.hist)) then return end
+	ctx = ctx or (LF.LootContext and LF.LootContext())
+	if not LF.RecordLoot(link, count, ctx) and not retry and C_Timer then
+		C_Timer.After(1, function() CountValue(link, count, ctx, true) end)
 	end
 end
 
@@ -667,7 +666,7 @@ ev:SetScript("OnEvent", function(_, e, a1)
 		Build(CUR_KEYS, CUR_FALLBACK, curPats)
 		lastMoney = Num(GetMoney and GetMoney())
 		for _, x in ipairs({ "CHAT_MSG_LOOT", "CHAT_MSG_CURRENCY", "CHAT_MSG_COMBAT_HONOR_GAIN", "PLAYER_MONEY",
-			"MERCHANT_SHOW", "MERCHANT_CLOSED", "TRADE_SHOW", "TRADE_CLOSED" }) do Reg(x) end
+			"MERCHANT_SHOW", "MERCHANT_CLOSED", "TRADE_SHOW", "TRADE_CLOSED", "MAIL_SHOW", "MAIL_CLOSED" }) do Reg(x) end
 		LF.ApplyLook()
 		if LF.UpdateMinimapButton then LF.UpdateMinimapButton() end
 		return
@@ -689,8 +688,9 @@ ev:SetScript("OnEvent", function(_, e, a1)
 	elseif e == "PLAYER_MONEY" then
 		local m = Num(GetMoney())
 		if not m then return end
-		if lastMoney and m > lastMoney and not busy.MERCHANT and not busy.TRADE then
-			if LF.AddValue and LF.db.gph then LF.AddValue("money", m - lastMoney) end
+		if lastMoney and m > lastMoney and not busy.MERCHANT and not busy.TRADE and not busy.MAIL then
+			if LF.AddValue and (LF.db.gph or LF.db.hist) then LF.AddValue("money", m - lastMoney) end
+			if LF.HistMoney then LF.HistMoney(m - lastMoney) end
 			LF.ShowMoney(m - lastMoney)
 		end
 		lastMoney = m
@@ -698,6 +698,8 @@ ev:SetScript("OnEvent", function(_, e, a1)
 	elseif e == "MERCHANT_CLOSED" then busy.MERCHANT = nil
 	elseif e == "TRADE_SHOW" then busy.TRADE = true
 	elseif e == "TRADE_CLOSED" then busy.TRADE = nil
+	elseif e == "MAIL_SHOW" then busy.MAIL = true -- auction sales and mailed gold aren't loot
+	elseif e == "MAIL_CLOSED" then busy.MAIL = nil
 	end
 end)
 
@@ -767,7 +769,9 @@ SlashCmdList.LOOTFLARE = function(msg)
 		db.gph = not db.gph
 		if LF.ApplyGold then LF.ApplyGold() end
 		Say(db.gph and "gold-per-hour box shown (drag it to move, right-click to start over)." or "gold-per-hour box hidden.")
-	elseif msg == "help" then Say("/lflare (settings), test, on, off, move, reset, gold")
+	elseif msg == "history" or msg == "hist" or msg == "log" then
+		if LF.ToggleHistory then LF.ToggleHistory() end
+	elseif msg == "help" then Say("/lflare (settings), test, on, off, move, reset, gold, history")
 	elseif LF.ToggleOptions then LF.ToggleOptions()
 	else Say("/lflare test, on, off, move, reset") end
 end

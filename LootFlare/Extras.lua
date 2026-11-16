@@ -120,7 +120,7 @@ function LF.Banner(l)
 end
 
 ------------------------------------------------------------------------
--- Gold per hour: money looted + vendor value of items looted, over time played
+-- Gold per hour: money looted + value of items looted (vendor, and AH via History.lua), over time played
 ------------------------------------------------------------------------
 local gph = CreateFrame("Button", "LootFlareGoldFrame", UIParent)
 gph:SetSize(230, 24)
@@ -128,7 +128,7 @@ gph:SetFrameStrata("HIGH") -- above action buttons and other add-ons' icons
 gph:SetMovable(true)
 gph:SetClampedToScreen(true)
 gph:RegisterForDrag("LeftButton")
-gph:RegisterForClicks("RightButtonUp")
+gph:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 Skin.Panel(gph, 0.8)
 local gAccent = gph:CreateTexture(nil, "ARTWORK")
 gAccent:SetPoint("TOPLEFT", 1, -1); gAccent:SetPoint("BOTTOMLEFT", 1, 1); gAccent:SetWidth(2)
@@ -160,9 +160,26 @@ local function Time(secs)
 	return m .. "m"
 end
 
-function LF.RefreshGold()
+-- money looted + the higher of AH and vendor value of the items
+function LF.PerHourAH()
+	local s = S()
+	local total = s.money + (s.ah or 0)
+	if s.secs < 60 then return total, nil end
+	return total, floor(total * 3600 / s.secs)
+end
+
+function LF.GoldText()
 	local total, perHour = LF.PerHour()
-	gText:SetText("|cffffd100Loot|r " .. Short(total) .. "   |cffffd100/hr|r " .. (perHour and Short(perHour) or "..."))
+	local t = "|cffffd100Loot|r " .. Short(total) .. "   |cffffd100/hr|r " .. (perHour and Short(perHour) or "...")
+	if LF.HasAHPrices and LF.HasAHPrices() then
+		local _, ah = LF.PerHourAH()
+		t = t .. "  |cff9fd0ff(AH " .. (ah and Short(ah) or "...") .. ")|r"
+	end
+	return t
+end
+
+function LF.RefreshGold()
+	gText:SetText(LF.GoldText())
 	gph:SetWidth(max(150, (gText:GetStringWidth() or 200) + 20))
 end
 
@@ -175,26 +192,31 @@ end
 
 function LF.ResetGold()
 	local s = S()
-	s.secs, s.money, s.items = 0, 0, 0
+	s.secs, s.money, s.items, s.ah = 0, 0, 0, 0
+	if LF.HistNewSession then LF.HistNewSession() end -- the old session goes into the loot history
 	LF.RefreshGold()
 end
 
 local tick = 0
-gph:SetScript("OnUpdate", function(_, dt)
-	S().secs = S().secs + dt
+gph:SetScript("OnUpdate", function(_, dt) -- the clock itself runs in History.lua (LF.Tick)
 	tick = tick + dt
 	if tick >= 1 then tick = 0; LF.RefreshGold() end
 end)
 
+local dragged = 0
 gph:SetScript("OnDragStart", gph.StartMoving)
 gph:SetScript("OnDragStop", function(self)
 	self:StopMovingOrSizing()
+	dragged = GetTime and GetTime() or 0
 	local x, y = self:GetCenter()
 	local px, py = UIParent:GetCenter()
 	LF.db.gphPos = { x = floor(x - px + 0.5), y = floor(y - py + 0.5) }
 	LF.ApplyGold()
 end)
-gph:SetScript("OnClick", function(_, button) if button == "RightButton" then LF.ResetGold() end end)
+gph:SetScript("OnClick", function(_, button)
+	if button == "RightButton" then LF.ResetGold()
+	elseif LF.ToggleHistory and not (GetTime and GetTime() - dragged < 0.3) then LF.ToggleHistory() end
+end)
 gph:SetScript("OnEnter", function(self)
 	local s = S()
 	local total, perHour = LF.PerHour()
@@ -202,11 +224,20 @@ gph:SetScript("OnEnter", function(self)
 	GameTooltip:AddLine("Loot Flare: gold per hour")
 	GameTooltip:AddDoubleLine("Money looted", LF.FormatMoney(s.money), 1, 1, 1, 1, 1, 1)
 	GameTooltip:AddDoubleLine("Items (vendor value)", LF.FormatMoney(s.items), 1, 1, 1, 1, 1, 1)
-	GameTooltip:AddDoubleLine("Total", LF.FormatMoney(total), 1, 0.82, 0, 1, 1, 1)
+	local ahOn = LF.HasAHPrices and LF.HasAHPrices()
+	if ahOn then GameTooltip:AddDoubleLine("Items (AH value)", LF.FormatMoney(s.ah or 0), 0.62, 0.82, 1, 1, 1, 1) end
+	GameTooltip:AddDoubleLine("Total (vendor)", LF.FormatMoney(total), 1, 0.82, 0, 1, 1, 1)
 	GameTooltip:AddDoubleLine("Time", Time(s.secs), 1, 1, 1, 1, 1, 1)
-	GameTooltip:AddDoubleLine("Per hour", perHour and LF.FormatMoney(perHour) or "after a minute", 1, 0.82, 0, 1, 1, 1)
-	GameTooltip:AddLine("Counts time only while you're logged in. Vendor sales and trades aren't counted.", 0.7, 0.7, 0.7, true)
-	GameTooltip:AddLine("|cffffffffDrag|r move   |cffffffffRight-click|r start over", 0.8, 0.8, 0.8)
+	GameTooltip:AddDoubleLine("Per hour (vendor)", perHour and LF.FormatMoney(perHour) or "after a minute", 1, 0.82, 0, 1, 1, 1)
+	if ahOn then
+		local _, ah = LF.PerHourAH()
+		GameTooltip:AddDoubleLine("Per hour (AH)", ah and LF.FormatMoney(ah) or "after a minute", 0.62, 0.82, 1, 1, 1, 1)
+		GameTooltip:AddLine("AH value: Auctionator, then TSM; soulbound and grey items at vendor price.", 0.7, 0.7, 0.7, true)
+	else
+		GameTooltip:AddLine("Install Auctionator or TSM to see AH value too.", 0.7, 0.7, 0.7, true)
+	end
+	GameTooltip:AddLine("Counts time only while you're logged in. Vendor sales, mail and trades aren't counted.", 0.7, 0.7, 0.7, true)
+	GameTooltip:AddLine("|cffffffffClick|r loot history   |cffffffffDrag|r move   |cffffffffRight-click|r start over", 0.8, 0.8, 0.8)
 	GameTooltip:Show()
 end)
 gph:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -251,7 +282,8 @@ ev:SetScript("OnEvent", function(_, _, isLogin)
 	if not LF.db then return end
 	if isLogin == true and LF.db.gphLoginReset then
 		local s = S()
-		s.secs, s.money, s.items = 0, 0, 0
+		s.secs, s.money, s.items, s.ah = 0, 0, 0, 0
+		if LF.HistNewSession then LF.HistNewSession() end
 	end
 	-- the old default spot (middle of the screen) gives way to "just above the action bars"
 	local p = LF.db.gphPos

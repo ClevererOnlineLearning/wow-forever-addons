@@ -172,6 +172,12 @@ do
 	Opt(c, "Show the gold-per-hour box", "gph", L, y, function() LF.ApplyGold() end)
 	y = S.Row(c, 26)
 	Opt(c, "Start over each time I log in", "gphLoginReset", L, y)
+	y = S.Row(c, 26)
+	Opt(c, "Keep a loot history (zones, subzones, mobs)", "hist", L, y, nil,
+		"Remembers what you looted, where, and from which mob or node, with AH value, so you can see which areas pay best.")
+	local hb = S.Button(c, "Loot history", 110, 22)
+	hb:SetPoint("TOPRIGHT", -L, y - 2)
+	hb:SetScript("OnClick", function() if LF.ToggleHistory then LF.ToggleHistory() end end)
 	y = S.Row(c, 32)
 	local again = S.Button(c, "Start over now", 140, 22)
 	again:SetPoint("TOPLEFT", L, y - 2)
@@ -180,8 +186,9 @@ do
 	spot:SetPoint("LEFT", again, "RIGHT", 8, 0)
 	spot:SetScript("OnClick", function() LF.ResetGoldPosition() end)
 	y = S.Row(c, 34)
-	S.Note(c, "Counts money you loot plus what your loot would sell for, over the time you're logged in. "
-		.. "Selling to vendors and trades don't count. Drag the box to move it; right-click it to start over.", L, y, CW - 2 * L)
+	S.Note(c, "Counts money you loot plus what your loot would sell for (vendor, and AH with Auctionator or TSM), "
+		.. "over the time you're logged in. Vendor sales, mail and trades don't count. Drag the box to move it; "
+		.. "click it for the loot history; right-click it to start over.", L, y, CW - 2 * L)
 	S.Fit(c, 8)
 
 	local c2 = S.Card(p, "Other", 12, S.Below(c), CW)
@@ -190,7 +197,7 @@ do
 	mmc:SetScript("OnClick", function(self) db().minimap.hide = not self:GetChecked(); LF.UpdateMinimapButton() end)
 	R(function() mmc:SetChecked(not db().minimap.hide) end)
 	y = S.Row(c2, 34)
-	S.Note(c2, "Chat commands: /lflare test, on, off, move, reset, gold\nThe same item looted again joins its line (x5) instead of adding a new one.", L, y, CW - 2 * L)
+	S.Note(c2, "Chat commands: /lflare test, on, off, move, reset, gold, history\nThe same item looted again joins its line (x5) instead of adding a new one.", L, y, CW - 2 * L)
 	S.Fit(c2, 8)
 end
 
