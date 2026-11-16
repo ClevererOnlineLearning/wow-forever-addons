@@ -4,7 +4,7 @@ local S = ns.Skin
 local LF = LootFlare
 local function db() return LF.db end
 
-local W, H = 470, 492
+local W, H = 470, 570
 local CW = W - 24 -- card width
 local GetMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
 local version = GetMeta and GetMeta("LootFlare", "Version")
@@ -213,6 +213,12 @@ do
 		"Stops the box being dragged; clicking it still works. Shift-click the box to lock or unlock it too.")
 	y = S.Row(c, 26)
 	Opt(c, "Start a new session each time I log in", "gphLoginReset", L, y)
+	y = S.Row(c, 26)
+	Opt(c, "Pause the clock when AFK, idle or in town", "pauseIdle", L, y, nil,
+		"The clock stops while you're AFK, resting in a town or inn, or haven't moved, fought or looted for 3 minutes, so breaks don't lower your gold per hour.")
+	y = S.Row(c, 26)
+	Opt(c, "Doubtful AH prices count at vendor price", "ahSafe", L, y, nil,
+		"Items that rarely sell (TSM sale rate) or whose Auctionator price is over a week old count at vendor price, so one lucky drop doesn't inflate your numbers. They're marked in the loot history.")
 	y = S.Row(c, 30)
 	local again = S.Button(c, "New session", 120, 22)
 	again:SetPoint("TOPLEFT", L, y - 2)
@@ -233,6 +239,9 @@ do
 	local hb = S.Button(c2, "Open loot history", 140, 22)
 	hb:SetPoint("TOPRIGHT", -L, y - 2)
 	hb:SetScript("OnClick", function() if LF.ToggleHistory then LF.ToggleHistory() end end)
+	y = S.Row(c2, 26)
+	Opt(c2, "Leave quest rewards out of zone rankings", "histQuestOut", L, y, nil,
+		"Quest gold and reward items still count for your session, but not for the zone, so zones are ranked by what you farm there.")
 	y = S.Row(c2, 30)
 	S.Note(c2, "Shows which zones, subzones and mobs pay best. Also opens when you click the gold-per-hour box.",
 		L, y, CW - 2 * L)
@@ -244,7 +253,7 @@ do
 	mmc:SetScript("OnClick", function(self) db().minimap.hide = not self:GetChecked(); LF.UpdateMinimapButton() end)
 	R(function() mmc:SetChecked(not db().minimap.hide) end)
 	y = S.Row(c3, 20)
-	S.Note(c3, "Chat commands: /lflare test, on, off, move, reset, gold, goldlock, history", L, y, CW - 2 * L)
+	S.Note(c3, "Chat commands: /lflare test, on, off, move, reset, gold, goldlock, history, check", L, y, CW - 2 * L)
 	S.Fit(c3, 6)
 end
 

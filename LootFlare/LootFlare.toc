@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Loot Flare
 ## Notes: Shows what you loot mid-screen with rarity glows, a big banner for great drops, quest progress, upgrade and sell value, gold per hour with AH value, a loot history by zone and mob, 4 animations and a sound per rarity. /lflare
-## Version: 1.4.1
+## Version: 1.5
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## SavedVariables: LootFlareDB
