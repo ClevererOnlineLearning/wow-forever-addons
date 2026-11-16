@@ -19,6 +19,8 @@ local DEFAULTS = {
 	vendor = "grey", -- sell value: "off", "grey" (junk only) or "all"
 	banner = true, bannerMin = 3, edgeGlow = true,
 	gph = false, gphLoginReset = true, gphLocked = false, -- gphPos: nil = just above the action bars
+	gphScale = 1.0, gphBg = 0.8, gphColor = "gold", -- the box's size, background opacity, label colour
+	gphShow = { total = true, vendor = true, ah = true, time = false }, -- what the box shows
 	session = { secs = 0, money = 0, items = 0, ah = 0 },
 	hist = true, histData = { sessions = {}, zones = {} }, -- loot history (History.lua)
 	pauseIdle = true, ahSafe = true, histQuestOut = true, -- clock pauses when idle; doubtful AH prices at vendor; quests out of zones

@@ -129,12 +129,38 @@ gph:SetMovable(true)
 gph:SetClampedToScreen(true)
 gph:RegisterForDrag("LeftButton")
 gph:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-Skin.Panel(gph, 0.8)
-local gAccent = gph:CreateTexture(nil, "ARTWORK")
-gAccent:SetPoint("TOPLEFT", 1, -1); gAccent:SetPoint("BOTTOMLEFT", 1, 1); gAccent:SetWidth(2)
-gAccent:SetColorTexture(1, 0.82, 0, 0.9)
+Skin.Panel(gph, 1)
 local gText = gph:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-gText:SetPoint("CENTER", 1, 0)
+gText:SetPoint("CENTER", 0, 0)
+
+-- The box's look: label colour, size, background (settings: Look tab)
+LF.GOLD_COLORS = {
+	{ key = "gold", name = "Gold", hex = "ffd100" }, { key = "white", name = "White", hex = "ffffff" },
+	{ key = "green", name = "Green", hex = "40ff40" }, { key = "blue", name = "Blue", hex = "4aa8ff" },
+	{ key = "purple", name = "Purple", hex = "c27aff" }, { key = "orange", name = "Orange", hex = "ff9933" },
+	{ key = "grey", name = "Grey", hex = "aaaaaa" },
+}
+local function LabelHex()
+	for _, c in ipairs(LF.GOLD_COLORS) do if c.key == LF.db.gphColor then return c.hex end end
+	return "ffd100"
+end
+local function Clamp(v, lo, hi) return math.min(hi, math.max(lo, v)) end
+local function Round1(v) return floor(v * 10 + 0.5) / 10 end
+-- what: "scale" (0.6-2.0), "bg" (0-1), "color" (next/previous); d = +1 / -1
+function LF.SetGoldLook(what, d)
+	local db = LF.db
+	if what == "scale" then
+		db.gphScale = Clamp(Round1((db.gphScale or 1) + d * 0.1), 0.6, 2.0)
+	elseif what == "bg" then
+		db.gphBg = Clamp(Round1((db.gphBg or 0.8) + d * 0.1), 0, 1)
+	elseif what == "color" then
+		local i = 1
+		for k, c in ipairs(LF.GOLD_COLORS) do if c.key == db.gphColor then i = k end end
+		i = (i - 1 + d) % #LF.GOLD_COLORS + 1
+		db.gphColor = LF.GOLD_COLORS[i].key
+	end
+	LF.ApplyGold()
+end
 gph:Hide()
 
 local function S() return LF.db.session end
@@ -170,11 +196,21 @@ end
 
 function LF.GoldText()
 	local total, perHour = LF.PerHour()
-	local t = "|cffffd100Loot|r " .. Short(total) .. "   |cffffd100/hr|r " .. (perHour and Short(perHour) or "...")
-	if LF.HasAHPrices and LF.HasAHPrices() then
+	local show = type(LF.db.gphShow) == "table" and LF.db.gphShow or {}
+	local hasAH = LF.HasAHPrices and LF.HasAHPrices()
+	local wantAH = show.ah and hasAH
+	if not (show.total or show.vendor or wantAH or show.time) then show = { vendor = true } end -- never an empty box
+	local lab = "|cff" .. LabelHex()
+	local parts = {}
+	if show.total then parts[#parts + 1] = lab .. "Loot|r " .. Short(total) end
+	if show.vendor then parts[#parts + 1] = lab .. "/hr|r " .. (perHour and Short(perHour) or "...") end
+	if wantAH then
 		local _, ah = LF.PerHourAH()
-		t = t .. "  |cff9fd0ff(AH " .. (ah and Short(ah) or "...") .. ")|r"
+		parts[#parts + 1] = show.vendor and ("|cff9fd0ff(AH " .. (ah and Short(ah) or "...") .. ")|r")
+			or (lab .. "/hr|r |cff9fd0ff" .. (ah and Short(ah) or "...") .. " AH|r")
 	end
+	if show.time then parts[#parts + 1] = lab .. "Time|r " .. Time(S().secs) end
+	local t = table.concat(parts, "   ")
 	local running, why = true
 	if LF.ClockState then running, why = LF.ClockState() end
 	if not running then t = t .. "  |cff888888paused" .. (why and (" (" .. why .. ")") or "") .. "|r" end
@@ -183,7 +219,7 @@ end
 
 function LF.RefreshGold()
 	gText:SetText(LF.GoldText())
-	gph:SetWidth(max(150, (gText:GetStringWidth() or 200) + 20))
+	gph:SetWidth(max(60, (gText:GetStringWidth() or 200) + 20))
 end
 
 function LF.AddValue(kind, copper)
@@ -227,9 +263,11 @@ end)
 gph:SetScript("OnDragStop", function(self)
 	self:StopMovingOrSizing()
 	dragged = GetTime and GetTime() or 0
+	-- saved in screen units, so changing the box's size doesn't move it
+	local sc = self:GetScale() or 1
 	local x, y = self:GetCenter()
 	local px, py = UIParent:GetCenter()
-	LF.db.gphPos = { x = floor(x - px + 0.5), y = floor(y - py + 0.5) }
+	LF.db.gphPos = { x = floor(x * sc - px + 0.5), y = floor(y * sc - py + 0.5) }
 	LF.ApplyGold()
 end)
 gph:SetScript("OnClick", function(_, button)
@@ -286,11 +324,16 @@ end
 
 function LF.ApplyGold()
 	local db = LF.db
+	local sc = db.gphScale or 1
+	gph:SetScale(sc)
+	gph.bg:SetColorTexture(0.055, 0.055, 0.07, 1)
+	gph.bg:SetAlpha(db.gphBg or 0.8)
+	for _, e in ipairs(gph.edges or {}) do e:SetShown((db.gphBg or 0.8) > 0) end
 	gph:ClearAllPoints()
 	if type(db.gphPos) == "table" and db.gphPos.x then
-		gph:SetPoint("CENTER", UIParent, "CENTER", db.gphPos.x, db.gphPos.y)
+		gph:SetPoint("CENTER", UIParent, "CENTER", db.gphPos.x / sc, db.gphPos.y / sc)
 	else
-		gph:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, AboveBars())
+		gph:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, AboveBars() / sc)
 	end
 	lockIcon:SetShown(db.gphLocked and true or false)
 	if db.gph then LF.RefreshGold(); gph:Show() else gph:Hide() end
