@@ -1,7 +1,8 @@
 -- TankFirst: in the Group Finder's Browse list, listings offering a Tank move to the top (solo
 -- tanks first, then groups that have one) and get a blue glow with a shield, so after each
 -- search you see them straight away. While your group has no healer, healers come next with a
--- green glow. Everything else keeps Blizzard's own order.
+-- green glow. Once your group has a tank (or a healer), those stop being moved or marked.
+-- Everything else keeps Blizzard's own order.
 -- Only reads search results; never applies, invites or searches for you. Every value is checked
 -- with issecretvalue, and if the game hides something the listing simply isn't marked.
 -- Written by good mens (Mephz on WoW Forever).
@@ -52,32 +53,42 @@ function TF.RoleLevel(id, role)
 end
 function TF.TankLevel(id) return TF.RoleLevel(id, "tank") end
 
--- Does your own group still need a healer? (on your own, yes)
-function TF.NeedHealer()
-	if not (db and db.healers) then return false end
+-- Does your own group (you included) already have someone in this role?
+local function GroupHas(ROLE)
 	local units = { "player" }
 	local raid = Plain(Call(IsInRaid))
 	local n = Plain(Call(GetNumGroupMembers)) or 0
 	if raid then for i = 1, n do units[#units + 1] = "raid" .. i end
 	else for i = 1, 4 do units[#units + 1] = "party" .. i end end
 	for _, u in ipairs(units) do
-		if Plain(Call(UnitExists, u)) and Plain(Call(UnitGroupRolesAssigned, u)) == "HEALER" then return false end
+		if Plain(Call(UnitExists, u)) and Plain(Call(UnitGroupRolesAssigned, u)) == ROLE then return true end
 	end
-	return true
+	return false
 end
 
--- What a listing is worth to you: tank 2/1, then (only while you need one) healer 2/1
-function TF.Mark(id, needHealer)
-	local t = TF.TankLevel(id)
-	if t > 0 then return "tank", t end
-	if needHealer then
+-- Does your group still need a tank / a healer? (on your own, yes)
+function TF.NeedTank() return not GroupHas("TANK") end
+function TF.NeedHealer()
+	if not (db and db.healers) then return false end
+	return not GroupHas("HEALER")
+end
+function TF.Needs() return { tank = TF.NeedTank(), healer = TF.NeedHealer() } end
+
+-- What a listing is worth to you: tank 2/1, then healer 2/1, each only while your group needs one
+function TF.Mark(id, need)
+	need = need or TF.Needs()
+	if need.tank then
+		local t = TF.TankLevel(id)
+		if t > 0 then return "tank", t end
+	end
+	if need.healer then
 		local h = TF.RoleLevel(id, "healer")
 		if h > 0 then return "healer", h end
 	end
 	return nil, 0
 end
-local function Priority(id, needHealer)
-	local kind, lvl = TF.Mark(id, needHealer)
+local function Priority(id, need)
+	local kind, lvl = TF.Mark(id, need)
 	if kind == "tank" then return 10 + lvl end
 	return lvl
 end
@@ -92,7 +103,7 @@ end
 
 function TF.SortTanksFirst(results)
 	if type(results) ~= "table" or #results < 2 then return false end
-	local keyed, need = {}, TF.NeedHealer()
+	local keyed, need = {}, TF.Needs()
 	for i, x in ipairs(results) do keyed[i] = { x = x, i = i, lvl = Priority(IdOf(x), need) } end
 	local moved = false
 	table.sort(keyed, function(a, b)
@@ -171,7 +182,7 @@ end
 function TF.DecorateAll()
 	local browse = _G.LFGBrowseFrame
 	if not (browse and db) then return 0 end
-	local n, need = 0, TF.NeedHealer()
+	local n, need = 0, TF.Needs()
 	for _, row in ipairs(VisibleRows(browse)) do
 		local id = row:IsShown() and RowId(row) or nil
 		if id then
@@ -295,7 +306,7 @@ SlashCmdList.TANKFIRST = function(msg)
 			end
 		end
 		r[#r + 1] = ("results: %d, solo tanks: %d, groups with a tank: %d, solo healers: %d"):format(n, solo, group, heal)
-		r[#r + 1] = "your group needs a healer: " .. (TF.NeedHealer() and "yes" or "no")
+		r[#r + 1] = "your group needs a tank: " .. (TF.NeedTank() and "yes" or "no") .. ", a healer: " .. (TF.NeedHealer() and "yes" or "no")
 		r[#r + 1] = ("rows on screen: %d, marked: %d"):format(browse and #VisibleRows(browse) or 0, TF.DecorateAll())
 		local first = type(results) == "table" and IdOf(results[1])
 		if first then
@@ -305,7 +316,7 @@ SlashCmdList.TANKFIRST = function(msg)
 		for _, l in ipairs(r) do Say(l) end
 		db.lastCheck = r
 	else
-		Say(("is %s. Tanks to the top: %s, glow: %s, healers when you need one: %s."):format(OnOff(db.enabled), OnOff(db.sort), OnOff(db.highlight), OnOff(db.healers)))
+		Say(("is %s. Tanks to the top: %s, glow: %s, healers: %s. Each only while your group still needs one."):format(OnOff(db.enabled), OnOff(db.sort), OnOff(db.highlight), OnOff(db.healers)))
 		Say("|cffffffff/tanks sort|r  top on/off   |cffffffff/tanks glow|r  glow on/off   |cffffffff/tanks healers|r  healers on/off   |cffffffff/tanks off|r / |cffffffffon|r   |cffffffff/tanks check|r  what it can see")
 	end
 end
