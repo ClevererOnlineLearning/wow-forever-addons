@@ -175,6 +175,9 @@ function LF.GoldText()
 		local _, ah = LF.PerHourAH()
 		t = t .. "  |cff9fd0ff(AH " .. (ah and Short(ah) or "...") .. ")|r"
 	end
+	local running, why = true
+	if LF.ClockState then running, why = LF.ClockState() end
+	if not running then t = t .. "  |cff888888paused" .. (why and (" (" .. why .. ")") or "") .. "|r" end
 	return t
 end
 

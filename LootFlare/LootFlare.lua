@@ -21,6 +21,7 @@ local DEFAULTS = {
 	gph = false, gphLoginReset = true, gphLocked = false, -- gphPos: nil = just above the action bars
 	session = { secs = 0, money = 0, items = 0, ah = 0 },
 	hist = true, histData = { sessions = {}, zones = {} }, -- loot history (History.lua)
+	pauseIdle = true, ahSafe = true, histQuestOut = true, -- clock pauses when idle; doubtful AH prices at vendor; quests out of zones
 	bagCount = true, fancy = true, growUp = true,
 	anim = "stack",
 	scale = 1.0, duration = 4, maxLines = 8,
@@ -425,14 +426,14 @@ local itemPats, curPats = {}, {}
 local function Build(keys, fallback, out)
 	for _, k in ipairs(keys) do
 		local f = _G[k] or fallback[k]
-		if type(f) == "string" and not Secret(f) then out[#out + 1] = ToPattern(f) end
+		if type(f) == "string" and not Secret(f) then out[#out + 1] = { ToPattern(f), k } end
 	end
 end
 
 local function Match(msg, pats)
 	for _, p in ipairs(pats) do
-		local a, b = msg:match(p)
-		if a then return a, tonumber(b) or 1 end
+		local a, b = msg:match(p[1])
+		if a then return a, tonumber(b) or 1, p[2] end
 	end
 end
 
@@ -558,9 +559,10 @@ local function CountValue(link, count, ctx, retry)
 	end
 end
 
-function LF.ShowItem(link, count, sound)
+-- kind: the chat string it came from; things you craft ("You create") aren't loot
+function LF.ShowItem(link, count, sound, kind)
 	local db = LF.db
-	CountValue(link, count)
+	if not (type(kind) == "string" and kind:find("CREATED", 1, true)) then CountValue(link, count) end
 	if not db.items then return end
 	local name = link:match("%[(.-)%]") or link
 	local q
@@ -674,8 +676,8 @@ ev:SetScript("OnEvent", function(_, e, a1)
 	if type(a1) == "string" and Secret(a1) then return end
 	if e == "CHAT_MSG_LOOT" then
 		if not a1 then return end
-		local link, n = Match(a1, itemPats)
-		if link then LF.ShowItem(link, n) end
+		local link, n, kind = Match(a1, itemPats)
+		if link then LF.ShowItem(link, n, nil, kind) end
 	elseif e == "CHAT_MSG_CURRENCY" then
 		if not a1 then return end
 		local link, n = Match(a1, curPats)
@@ -769,11 +771,13 @@ SlashCmdList.LOOTFLARE = function(msg)
 		db.gph = not db.gph
 		if LF.ApplyGold then LF.ApplyGold() end
 		Say(db.gph and "gold-per-hour box shown (drag to move, click for the loot history, right-click for a new session)." or "gold-per-hour box hidden.")
+	elseif msg == "check" then
+		if LF.Check then LF.Check() end
 	elseif msg == "goldlock" or msg == "lockgold" then
 		Say(LF.SetGoldLock() and "gold-per-hour box locked (shift-click it or /lflare goldlock to unlock)." or "gold-per-hour box unlocked: drag it to move.")
 	elseif msg == "history" or msg == "hist" or msg == "log" then
 		if LF.ToggleHistory then LF.ToggleHistory() end
-	elseif msg == "help" then Say("/lflare (settings), test, on, off, move, reset, gold, goldlock, history")
+	elseif msg == "help" then Say("/lflare (settings), test, on, off, move, reset, gold, goldlock, history, check")
 	elseif LF.ToggleOptions then LF.ToggleOptions()
 	else Say("/lflare test, on, off, move, reset") end
 end
