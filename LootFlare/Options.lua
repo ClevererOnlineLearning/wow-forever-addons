@@ -4,7 +4,7 @@ local S = ns.Skin
 local LF = LootFlare
 local function db() return LF.db end
 
-local W, H = 470, 476
+local W, H = 470, 492
 local CW = W - 24 -- card width
 local GetMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
 local version = GetMeta and GetMeta("LootFlare", "Version")
@@ -44,40 +44,39 @@ onChk:SetScript("OnClick", function(self) db().enabled = self:GetChecked() and t
 R(function() onChk:SetChecked(db().enabled) end)
 S.Tip(onChk, "Loot Flare on", "Untick to stop showing loot (settings are kept).")
 
-local pages = S.Tabs(panel, { "Display", "Look", "Alerts", "Gold & more" }, -38, 41)
+local pages = S.Tabs(panel, { "What shows", "Look", "Sounds & banner", "Gold & history" }, -38, 41)
 local L = 14         -- left column x inside a card
 local M = CW / 2 + 6 -- right column x
 
 ------------------------------------------------------------------------
--- Display
+-- What shows
 ------------------------------------------------------------------------
 do
 	local p = pages[1]
-	local c = S.Card(p, "What to show", 12, -12, CW)
+	local c = S.Card(p, "Show a line for", 12, -12, CW)
 	local y = S.Row(c, 26)
-	Opt(c, "Items", "items", L, y)
+	Opt(c, "Items", "items", L, y, nil, "Looting the same item again adds to its line (x5) instead of a new line.")
 	Opt(c, "Money", "money", M, y)
 	y = S.Row(c, 26)
 	Opt(c, "Currency", "currency", L, y)
 	Opt(c, "Honor", "honor", M, y)
 	y = S.Row(c, 30)
-	R(S.Stepper(c, "Show items from", L, y, CW - 2 * L, function() return QName(db().minQuality) end,
+	R(S.Stepper(c, "Lowest item rarity", L, y, CW - 2 * L, function() return QName(db().minQuality) end,
 		function(d) db().minQuality = Clamp(db().minQuality + d, 0, 5) end))
 	S.Fit(c, 4)
 
-	local c2 = S.Card(p, "Item details", 12, S.Below(c), CW)
+	local c2 = S.Card(p, "Extra info on item lines", 12, S.Below(c), CW)
 	y = S.Row(c2, 26)
-	Opt(c2, "Quest items and progress (3/8)", "quest", L, y, nil, "Quest items get a gold name, a ! badge and your progress from the quest log.")
+	Opt(c2, "Quest progress (3/8)", "quest", L, y, nil, "Quest items get a gold name, a ! badge and your progress from the quest log.")
+	Opt(c2, "Count in your bags (23)", "bagCount", M, y)
 	y = S.Row(c2, 26)
 	Opt(c2, "Item level on gear", "ilvl", L, y)
-	Opt(c2, "How many you have (23)", "bagCount", M, y)
-	y = S.Row(c2, 26)
-	Opt(c2, "\"Upgrade +5\" when gear beats what you wear", "upgrade", L, y, nil,
-		"Compares item level with what you have on in that slot (the weaker ring or trinket). It doesn't check whether your class can wear it.")
+	Opt(c2, "\"Upgrade +5\" on better gear", "upgrade", M, y, nil,
+		"When the item level beats what you wear in that slot (the weaker ring or trinket). It doesn't check whether your class can use it.")
 	y = S.Row(c2, 30)
 	local VEND = { "off", "grey", "all" }
-	local VNAME = { off = "Off", grey = "Junk only", all = "Everything" }
-	R(S.Stepper(c2, "Sell value", L, y, CW - 2 * L, function() return VNAME[db().vendor] or "Junk only" end,
+	local VNAME = { off = "Off", grey = "Junk only", all = "All items" }
+	R(S.Stepper(c2, "Vendor price", L, y, CW - 2 * L, function() return VNAME[db().vendor] or "Junk only" end,
 		function(d) db().vendor = Cycle(VEND, db().vendor, d) end))
 	S.Fit(c2, 4)
 end
@@ -98,13 +97,13 @@ do
 	y = S.Row(c, 26)
 	Opt(c, "Glow, shine and sparkles on rare and better", "fancy", L, y)
 	y = S.Row(c, 26)
-	Opt(c, "New lines push older ones upward", "growUp", L, y, function() LF.ApplyLook() end,
-		"Off: new lines push older ones downward instead.")
+	Opt(c, "Newest line at the bottom", "growUp", L, y, function() LF.ApplyLook() end,
+		"On: older lines move up as new ones arrive. Off: the newest line is at the top and older ones move down.")
 	S.Fit(c, 4)
 
 	local c2 = S.Card(p, "Size and timing", 12, S.Below(c), CW)
 	y = S.Row(c2, 30)
-	R(S.Stepper(c2, "Size", L, y, CW - 2 * L, function() return string.format("%.1fx", db().scale) end, function(d)
+	R(S.Stepper(c2, "Text size", L, y, CW - 2 * L, function() return string.format("%.1fx", db().scale) end, function(d)
 		db().scale = math.floor(Clamp(db().scale + d * 0.1, 0.5, 2.5) * 10 + 0.5) / 10
 		LF.ApplyLook()
 	end))
@@ -112,13 +111,13 @@ do
 	R(S.Stepper(c2, "Time on screen", L, y, CW - 2 * L, function() return db().duration .. " sec" end,
 		function(d) db().duration = Clamp(db().duration + d * 0.5, 1.5, 12) end))
 	y = S.Row(c2, 30)
-	R(S.Stepper(c2, "Most lines at once", L, y, CW - 2 * L, function() return tostring(db().maxLines) end,
+	R(S.Stepper(c2, "Most lines on screen", L, y, CW - 2 * L, function() return tostring(db().maxLines) end,
 		function(d) db().maxLines = Clamp(db().maxLines + d, 2, 15) end))
 	S.Fit(c2, 4)
 end
 
 ------------------------------------------------------------------------
--- Alerts: sounds and the big banner
+-- Sounds & banner
 ------------------------------------------------------------------------
 do
 	local p = pages[3]
@@ -193,70 +192,76 @@ do
 
 	local c2 = S.Card(p, "Big banner", 12, S.Below(c), CW)
 	local y = S.Row(c2, 26)
-	Opt(c2, "Banner across the screen for great drops", "banner", L, y)
+	Opt(c2, "Big banner across the screen for great drops", "banner", L, y)
 	y = S.Row(c2, 30)
-	R(S.Stepper(c2, "Starting from", L, y, CW - 2 * L, function() return QName(db().bannerMin) end,
+	R(S.Stepper(c2, "For drops of at least", L, y, CW - 2 * L, function() return QName(db().bannerMin) end,
 		function(d) db().bannerMin = Clamp(db().bannerMin + d, 3, 5) end))
 	y = S.Row(c2, 26)
-	Opt(c2, "Glow around the edge of the screen too", "edgeGlow", L, y)
+	Opt(c2, "Also glow around the edge of the screen", "edgeGlow", L, y)
 	S.Fit(c2, 4)
 end
 
 ------------------------------------------------------------------------
--- Gold & more
+-- Gold & history
 ------------------------------------------------------------------------
 do
 	local p = pages[4]
-	local c = S.Card(p, "Gold per hour", 12, -12, CW)
+	local c = S.Card(p, "Gold-per-hour box", 12, -12, CW)
 	local y = S.Row(c, 26)
-	Opt(c, "Show the gold-per-hour box", "gph", L, y, function() LF.ApplyGold() end)
+	Opt(c, "Show the box", "gph", L, y, function() LF.ApplyGold() end)
+	Opt(c, "Lock it in place", "gphLocked", M, y, function() LF.SetGoldLock(db().gphLocked) end,
+		"Stops the box being dragged; clicking it still works. Shift-click the box to lock or unlock it too.")
 	y = S.Row(c, 26)
-	Opt(c, "Start over each time I log in", "gphLoginReset", L, y)
-	Opt(c, "Lock the box in place", "gphLocked", M, y, function() LF.SetGoldLock(db().gphLocked) end,
-		"Stops the gold-per-hour box being dragged. Clicks still work. Shift-click the box to lock or unlock it too.")
-	y = S.Row(c, 26)
-	Opt(c, "Keep a loot history (zones, subzones, mobs)", "hist", L, y, nil,
-		"Remembers what you looted, where, and from which mob or node, with AH value, so you can see which areas pay best.")
-	local hb = S.Button(c, "Loot history", 110, 22)
-	hb:SetPoint("TOPRIGHT", -L, y - 2)
-	hb:SetScript("OnClick", function() if LF.ToggleHistory then LF.ToggleHistory() end end)
-	y = S.Row(c, 32)
-	local again = S.Button(c, "Start over now", 140, 22)
+	Opt(c, "Start a new session each time I log in", "gphLoginReset", L, y)
+	y = S.Row(c, 30)
+	local again = S.Button(c, "New session", 120, 22)
 	again:SetPoint("TOPLEFT", L, y - 2)
 	again:SetScript("OnClick", function() LF.ResetGold() end)
-	local spot = S.Button(c, "Put it above action bars", 180, 22)
+	S.Tip(again, "New session", "Sets the box back to zero. The session so far is saved in the loot history.")
+	local spot = S.Button(c, "Move it above the action bars", 210, 22)
 	spot:SetPoint("LEFT", again, "RIGHT", 8, 0)
 	spot:SetScript("OnClick", function() LF.ResetGoldPosition() end)
-	y = S.Row(c, 34)
-	S.Note(c, "Counts money you loot plus what your loot would sell for (vendor, and AH with Auctionator or TSM), "
-		.. "over the time you're logged in. Vendor sales, mail and trades don't count. Drag the box to move it; "
-		.. "click it for the loot history; right-click it to start over.", L, y, CW - 2 * L)
-	S.Fit(c, 8)
+	y = S.Row(c, 30)
+	S.Note(c, "Money you loot plus what your loot is worth (vendor price, or AH price with Auctionator or TSM). "
+		.. "Vendor sales, mail and trades don't count.", L, y, CW - 2 * L)
+	S.Fit(c, 6)
 
-	local c2 = S.Card(p, "Other", 12, S.Below(c), CW)
+	local c2 = S.Card(p, "Loot history", 12, S.Below(c), CW)
 	y = S.Row(c2, 26)
-	local mmc = S.Check(c2, "Show minimap button", L, y)
+	Opt(c2, "Keep a loot history", "hist", L, y, nil,
+		"Remembers every item you loot, where it dropped and what dropped it, with its AH value.")
+	local hb = S.Button(c2, "Open loot history", 140, 22)
+	hb:SetPoint("TOPRIGHT", -L, y - 2)
+	hb:SetScript("OnClick", function() if LF.ToggleHistory then LF.ToggleHistory() end end)
+	y = S.Row(c2, 30)
+	S.Note(c2, "Shows which zones, subzones and mobs pay best. Also opens when you click the gold-per-hour box.",
+		L, y, CW - 2 * L)
+	S.Fit(c2, 6)
+
+	local c3 = S.Card(p, "Other", 12, S.Below(c2), CW)
+	y = S.Row(c3, 26)
+	local mmc = S.Check(c3, "Show the minimap button", L, y)
 	mmc:SetScript("OnClick", function(self) db().minimap.hide = not self:GetChecked(); LF.UpdateMinimapButton() end)
 	R(function() mmc:SetChecked(not db().minimap.hide) end)
-	y = S.Row(c2, 34)
-	S.Note(c2, "Chat commands: /lflare test, on, off, move, reset, gold, history\nThe same item looted again joins its line (x5) instead of adding a new one.", L, y, CW - 2 * L)
-	S.Fit(c2, 8)
+	y = S.Row(c3, 20)
+	S.Note(c3, "Chat commands: /lflare test, on, off, move, reset, gold, goldlock, history", L, y, CW - 2 * L)
+	S.Fit(c3, 6)
 end
 
 ------------------------------------------------------------------------
 -- Footer
 ------------------------------------------------------------------------
 local foot = S.Footer(panel, 40)
-local move = S.Button(foot, "Move text", 110, 24)
+local move = S.Button(foot, "Move loot text", 120, 24)
 move:SetPoint("LEFT", 12, 0)
 move:SetScript("OnClick", function()
 	db().locked = not db().locked
 	LF.ApplyLook()
-	move:SetText(db().locked and "Move text" or "Lock text")
+	move:SetText(db().locked and "Move loot text" or "Lock loot text")
 end)
-R(function() move:SetText(db().locked and "Move text" or "Lock text") end)
-S.Tip(move, "Move the loot text", "Shows a blue box where the loot appears. Drag it, then click Lock text.")
-local reset = S.Button(foot, "Reset position", 120, 24)
+R(function() move:SetText(db().locked and "Move loot text" or "Lock loot text") end)
+S.Tip(move, "Move the loot text", "Shows a blue box where loot appears. Drag it, then click Lock loot text.")
+local reset = S.Button(foot, "Reset text position", 140, 24)
 reset:SetPoint("LEFT", move, "RIGHT", 8, 0)
 reset:SetScript("OnClick", function() LF.ResetPosition() end)
 local test = S.Button(foot, "Preview loot", 130, 24, true)

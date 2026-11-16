@@ -257,7 +257,7 @@ gph:SetScript("OnEnter", function(self)
 	end
 	GameTooltip:AddLine("Counts time only while you're logged in. Vendor sales, mail and trades aren't counted.", 0.7, 0.7, 0.7, true)
 	GameTooltip:AddLine("|cffffffffClick|r loot history   " .. (LF.db.gphLocked and "|cffff8080Locked|r" or "|cffffffffDrag|r move")
-		.. "   |cffffffffRight-click|r start over", 0.8, 0.8, 0.8)
+		.. "   |cffffffffRight-click|r new session", 0.8, 0.8, 0.8)
 	GameTooltip:AddLine("|cffffffffShift-click|r " .. (LF.db.gphLocked and "unlock" or "lock in place"), 0.8, 0.8, 0.8)
 	GameTooltip:Show()
 end)
