@@ -18,7 +18,7 @@ local DEFAULTS = {
 	quest = true, ilvl = true, upgrade = true,
 	vendor = "grey", -- sell value: "off", "grey" (junk only) or "all"
 	banner = true, bannerMin = 3, edgeGlow = true,
-	gph = false, gphLoginReset = true, -- gphPos: nil = just above the action bars
+	gph = false, gphLoginReset = true, gphLocked = false, -- gphPos: nil = just above the action bars
 	session = { secs = 0, money = 0, items = 0, ah = 0 },
 	hist = true, histData = { sessions = {}, zones = {} }, -- loot history (History.lua)
 	bagCount = true, fancy = true, growUp = true,
@@ -769,9 +769,11 @@ SlashCmdList.LOOTFLARE = function(msg)
 		db.gph = not db.gph
 		if LF.ApplyGold then LF.ApplyGold() end
 		Say(db.gph and "gold-per-hour box shown (drag it to move, right-click to start over)." or "gold-per-hour box hidden.")
+	elseif msg == "goldlock" or msg == "lockgold" then
+		Say(LF.SetGoldLock() and "gold-per-hour box locked (shift-click it or /lflare goldlock to unlock)." or "gold-per-hour box unlocked: drag it to move.")
 	elseif msg == "history" or msg == "hist" or msg == "log" then
 		if LF.ToggleHistory then LF.ToggleHistory() end
-	elseif msg == "help" then Say("/lflare (settings), test, on, off, move, reset, gold, history")
+	elseif msg == "help" then Say("/lflare (settings), test, on, off, move, reset, gold, goldlock, history")
 	elseif LF.ToggleOptions then LF.ToggleOptions()
 	else Say("/lflare test, on, off, move, reset") end
 end
