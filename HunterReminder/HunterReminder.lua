@@ -288,6 +288,9 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2, arg3)
 				end
 			end
 		end
+		-- the minimap button's spot (and whether it shows) is the same on every character
+		if type(HunterReminderMinimapDB) ~= "table" then HunterReminderMinimapDB = db.minimap end
+		db.minimap = HunterReminderMinimapDB
 		HR.db = db
 	elseif event == "PLAYER_LOGIN" then
 		for i, t in ipairs(TRACKED) do

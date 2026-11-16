@@ -656,6 +656,9 @@ events:SetScript("OnEvent", function(self, event)
 		if type(db.favorites) ~= "table" then db.favorites = {} end
 		if type(db.recent) ~= "table" then db.recent = {} end
 		if type(db.minimap) ~= "table" then db.minimap = { angle = 200, hide = false } end
+		-- the minimap button's spot (and whether it shows) is the same on every character
+		if type(TargetFinderMinimapDB) ~= "table" then TargetFinderMinimapDB = db.minimap end
+		db.minimap = TargetFinderMinimapDB
 		TF.Apply()
 		if TF.OnLogin then TF.OnLogin() end
 	elseif event == "CVAR_UPDATE" then -- "cast on key down" changed: the swap must follow it

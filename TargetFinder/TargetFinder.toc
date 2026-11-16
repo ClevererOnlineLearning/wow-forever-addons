@@ -1,10 +1,11 @@
 ## Interface: 16001
 ## Title: Target Finder
 ## Notes: Press one key to find a mob near you. Type a name, pick a key, done. /tfinder
-## Version: 3.9
+## Version: 3.9.1
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## OptionalDeps: Questie, QuestieDB
+## SavedVariables: TargetFinderMinimapDB
 ## SavedVariablesPerCharacter: TargetFinderDB
 ## IconTexture: Interface\Icons\INV_Misc_Spyglass_03
 Libs\LibStub.lua

@@ -356,6 +356,9 @@ ev:SetScript("OnEvent", function(self, event, unit)
 		if db.number == nil then db.number = true end
 		if type(db.colors) ~= "table" then db.colors = {} end
 		if type(db.minimap) ~= "table" then db.minimap = { hide = false, angle = 225 } end
+		-- the minimap button's spot (and whether it shows) is the same on every character
+		if type(ThreatTintMinimapDB) ~= "table" then ThreatTintMinimapDB = db.minimap end
+		db.minimap = ThreatTintMinimapDB
 		if TT.UpdateMinimapButton then TT.UpdateMinimapButton() end
 		autoTank = TT.AutoTank()
 		self:RegisterEvent("NAME_PLATE_UNIT_ADDED")
