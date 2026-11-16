@@ -203,8 +203,24 @@ gph:SetScript("OnUpdate", function(_, dt) -- the clock itself runs in History.lu
 	if tick >= 1 then tick = 0; LF.RefreshGold() end
 end)
 
-local dragged = 0
-gph:SetScript("OnDragStart", gph.StartMoving)
+-- Lock: the box stays put (clicks still work). Shift-click, /lflare goldlock or the settings.
+local lockIcon = gph:CreateTexture(nil, "OVERLAY")
+lockIcon:SetSize(12, 12)
+lockIcon:SetPoint("TOPRIGHT", 3, 4)
+lockIcon:SetTexture("Interface\\Buttons\\LockButton-Locked-Up")
+lockIcon:Hide()
+function LF.SetGoldLock(on)
+	if on == nil then on = not LF.db.gphLocked end
+	LF.db.gphLocked = on and true or false
+	lockIcon:SetShown(LF.db.gphLocked)
+	return LF.db.gphLocked
+end
+
+local dragged -- when the box was last dropped, so the click that ends a drag isn't a click
+gph:SetScript("OnDragStart", function(self)
+	if LF.db.gphLocked then return end
+	self:StartMoving()
+end)
 gph:SetScript("OnDragStop", function(self)
 	self:StopMovingOrSizing()
 	dragged = GetTime and GetTime() or 0
@@ -215,7 +231,10 @@ gph:SetScript("OnDragStop", function(self)
 end)
 gph:SetScript("OnClick", function(_, button)
 	if button == "RightButton" then LF.ResetGold()
-	elseif LF.ToggleHistory and not (GetTime and GetTime() - dragged < 0.3) then LF.ToggleHistory() end
+	elseif IsShiftKeyDown and IsShiftKeyDown() then
+		LF.SetGoldLock()
+		if GameTooltip:IsOwned(gph) then gph:GetScript("OnEnter")(gph) end
+	elseif LF.ToggleHistory and not (dragged and GetTime and GetTime() - dragged < 0.3) then LF.ToggleHistory() end
 end)
 gph:SetScript("OnEnter", function(self)
 	local s = S()
@@ -237,7 +256,9 @@ gph:SetScript("OnEnter", function(self)
 		GameTooltip:AddLine("Install Auctionator or TSM to see AH value too.", 0.7, 0.7, 0.7, true)
 	end
 	GameTooltip:AddLine("Counts time only while you're logged in. Vendor sales, mail and trades aren't counted.", 0.7, 0.7, 0.7, true)
-	GameTooltip:AddLine("|cffffffffClick|r loot history   |cffffffffDrag|r move   |cffffffffRight-click|r start over", 0.8, 0.8, 0.8)
+	GameTooltip:AddLine("|cffffffffClick|r loot history   " .. (LF.db.gphLocked and "|cffff8080Locked|r" or "|cffffffffDrag|r move")
+		.. "   |cffffffffRight-click|r start over", 0.8, 0.8, 0.8)
+	GameTooltip:AddLine("|cffffffffShift-click|r " .. (LF.db.gphLocked and "unlock" or "lock in place"), 0.8, 0.8, 0.8)
 	GameTooltip:Show()
 end)
 gph:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -268,6 +289,7 @@ function LF.ApplyGold()
 	else
 		gph:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, AboveBars())
 	end
+	lockIcon:SetShown(db.gphLocked and true or false)
 	if db.gph then LF.RefreshGold(); gph:Show() else gph:Hide() end
 end
 

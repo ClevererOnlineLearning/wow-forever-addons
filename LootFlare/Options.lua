@@ -123,12 +123,56 @@ end
 do
 	local p = pages[3]
 	local c = S.Card(p, "Sound for each rarity", 12, -12, CW)
-	local ids = {}
-	for _, s in ipairs(LF.SOUNDS) do ids[#ids + 1] = s.id end
 	local function SoundName(id)
 		for _, s in ipairs(LF.SOUNDS) do if s.id == id then return s.name end end
 		return LF.SOUNDS[1].name
 	end
+	-- one drop-down list shared by every row: it opens under the button you clicked
+	local IH = 20
+	local menu = CreateFrame("Frame", "LootFlareSoundMenu", panel)
+	menu:SetFrameStrata("FULLSCREEN_DIALOG")
+	menu:SetSize(180, #LF.SOUNDS * IH + 8)
+	menu:EnableMouse(true)
+	S.Panel(menu, 1)
+	S.Border(menu, 1, 0.82, 0, 0.6)
+	menu:Hide()
+	menu.items = {}
+	for i, s in ipairs(LF.SOUNDS) do
+		local r = CreateFrame("Button", nil, menu)
+		r:SetSize(172, IH)
+		r:SetPoint("TOPLEFT", 4, -4 - (i - 1) * IH)
+		local hl = r:CreateTexture(nil, "HIGHLIGHT")
+		hl:SetAllPoints()
+		hl:SetColorTexture(1, 0.82, 0, 0.15)
+		local fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		fs:SetPoint("LEFT", 20, 0)
+		r:SetFontString(fs)
+		r:SetText(s.name)
+		local tick = r:CreateTexture(nil, "OVERLAY")
+		tick:SetSize(14, 14)
+		tick:SetPoint("LEFT", 3, 0)
+		tick:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+		r.tick = tick
+		r:SetScript("OnClick", function()
+			if not menu.key then return end
+			db().sounds[menu.key] = s.id
+			menu:Hide()
+			if menu.show then menu.show() end
+			LF.PlaySoundID(s.id)
+		end)
+		menu.items[i] = r
+	end
+	local function OpenMenu(b, key, show)
+		if menu:IsShown() and menu.owner == b then menu:Hide(); return end
+		menu.owner, menu.key, menu.show = b, key, show
+		for i, s in ipairs(LF.SOUNDS) do menu.items[i].tick:SetShown(db().sounds[key] == s.id) end
+		menu:ClearAllPoints()
+		menu:SetPoint("TOPLEFT", b, "BOTTOMLEFT", 0, -2)
+		menu:Show()
+	end
+	panel:HookScript("OnHide", function() menu:Hide() end)
+
+	LF.soundPickers = {}
 	local function Row(key, label)
 		local y = S.Row(c, 28)
 		S.Text(c, label, L, y - 6)
@@ -137,14 +181,10 @@ do
 		play:SetScript("OnClick", function() LF.PlaySoundID(db().sounds[key]) end)
 		local b = S.Button(c, "", 180, 22)
 		b:SetPoint("RIGHT", play, "LEFT", -6, 0)
-		b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-		local function show() b:SetText(SoundName(db().sounds[key])) end
-		b:SetScript("OnClick", function(_, button)
-			db().sounds[key] = Cycle(ids, db().sounds[key], button == "RightButton" and -1 or 1)
-			show()
-			LF.PlaySoundID(db().sounds[key])
-		end)
-		S.Tip(b, "Change sound", "Click for the next sound, right-click for the previous one. It plays as you pick it.")
+		local function show() b:SetText(SoundName(db().sounds[key]) .. "  |cffffd100v|r") end
+		b:SetScript("OnClick", function(self) OpenMenu(self, key, show) end)
+		S.Tip(b, "Change sound", "Click to pick from the list. It plays as you pick it.")
+		LF.soundPickers[key] = b
 		R(show)
 	end
 	for q = 2, 5 do Row(q, QName(q)) end
@@ -172,6 +212,8 @@ do
 	Opt(c, "Show the gold-per-hour box", "gph", L, y, function() LF.ApplyGold() end)
 	y = S.Row(c, 26)
 	Opt(c, "Start over each time I log in", "gphLoginReset", L, y)
+	Opt(c, "Lock the box in place", "gphLocked", M, y, function() LF.SetGoldLock(db().gphLocked) end,
+		"Stops the gold-per-hour box being dragged. Clicks still work. Shift-click the box to lock or unlock it too.")
 	y = S.Row(c, 26)
 	Opt(c, "Keep a loot history (zones, subzones, mobs)", "hist", L, y, nil,
 		"Remembers what you looted, where, and from which mob or node, with AH value, so you can see which areas pay best.")
