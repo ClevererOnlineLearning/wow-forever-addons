@@ -4,7 +4,7 @@ local S = ns.Skin
 local LF = LootFlare
 local function db() return LF.db end
 
-local W, H = 470, 570
+local W, H = 470, 600
 local CW = W - 24 -- card width
 local GetMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
 local version = GetMeta and GetMeta("LootFlare", "Version")
@@ -114,6 +114,38 @@ do
 	R(S.Stepper(c2, "Most lines on screen", L, y, CW - 2 * L, function() return tostring(db().maxLines) end,
 		function(d) db().maxLines = Clamp(db().maxLines + d, 2, 15) end))
 	S.Fit(c2, 4)
+
+	-- the gold-per-hour box: which parts it shows, and how it looks
+	local c3 = S.Card(p, "Gold-per-hour box", 12, S.Below(c2), CW)
+	local function Part(label, key, x, yy, tip)
+		local ck = S.Check(c3, label, x, yy)
+		ck:SetScript("OnClick", function(self) db().gphShow[key] = self:GetChecked() and true or false; LF.ApplyGold() end)
+		R(function() ck:SetChecked(db().gphShow[key]) end)
+		if tip then S.Tip(ck, label, tip) end
+	end
+	y = S.Row(c3, 26)
+	Part("Loot so far", "total", L, y)
+	Part("Per hour (vendor)", "vendor", M, y)
+	y = S.Row(c3, 26)
+	Part("Per hour (AH)", "ah", L, y, "Needs Auctionator or TSM.")
+	Part("Session time", "time", M, y)
+	y = S.Row(c3, 30)
+	R(S.Stepper(c3, "Size", L, y, CW - 2 * L, function() return string.format("%.1fx", db().gphScale) end,
+		function(d) LF.SetGoldLook("scale", d) end))
+	y = S.Row(c3, 30)
+	R(S.Stepper(c3, "Background", L, y, CW - 2 * L, function()
+		local b = db().gphBg
+		if b <= 0 then return "None" elseif b >= 1 then return "Solid" end
+		return math.floor(b * 100 + 0.5) .. "%"
+	end, function(d) LF.SetGoldLook("bg", d) end))
+	y = S.Row(c3, 30)
+	R(S.Stepper(c3, "Label colour", L, y, CW - 2 * L, function()
+		for _, k in ipairs(LF.GOLD_COLORS) do
+			if k.key == db().gphColor then return "|cff" .. k.hex .. k.name .. "|r" end
+		end
+		return "Gold"
+	end, function(d) LF.SetGoldLook("color", d) end))
+	S.Fit(c3, 4)
 end
 
 ------------------------------------------------------------------------
