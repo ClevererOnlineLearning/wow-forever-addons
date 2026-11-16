@@ -494,7 +494,7 @@ end
 local function FillSessions()
 	local data = { SessionRow(Cur(), true) }
 	for _, c in ipairs(H().sessions) do data[#data + 1] = SessionRow(c) end
-	lists[3]:Set(data, ("Your last %d sessions (right-click the gold box or Start new session to begin a new one). Loot is AH value plus money looted.")
+	lists[3]:Set(data, ("Your last %d sessions. Loot is money looted plus AH value. A new session starts when you click New session or right-click the gold box.")
 		:format(KEEP_SESSIONS))
 end
 
@@ -517,10 +517,10 @@ local function Build()
 	clearBtn:SetPoint("LEFT", 12, 0)
 	clearBtn:SetScript("OnClick", function() LF.ClearHistory() end)
 	S.Tip(clearBtn, "Clear history", "Deletes every saved session and zone total. Click twice to confirm.")
-	local new = S.Button(foot, "Start new session", 140, 24)
+	local new = S.Button(foot, "New session", 120, 24)
 	new:SetPoint("LEFT", clearBtn, "RIGHT", 8, 0)
 	new:SetScript("OnClick", function() if LF.ResetGold then LF.ResetGold() else LF.HistNewSession() end end)
-	footNote = S.Note(foot, "", 0, 0, W - 310)
+	footNote = S.Note(foot, "", 0, 0, W - 290)
 	footNote:ClearAllPoints()
 	footNote:SetPoint("LEFT", new, "RIGHT", 12, 0)
 	win:SetScript("OnShow", function() LF.RefreshHistory() end)

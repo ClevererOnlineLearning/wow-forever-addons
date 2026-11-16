@@ -768,7 +768,7 @@ SlashCmdList.LOOTFLARE = function(msg)
 	elseif msg == "gold" or msg == "gph" then
 		db.gph = not db.gph
 		if LF.ApplyGold then LF.ApplyGold() end
-		Say(db.gph and "gold-per-hour box shown (drag it to move, right-click to start over)." or "gold-per-hour box hidden.")
+		Say(db.gph and "gold-per-hour box shown (drag to move, click for the loot history, right-click for a new session)." or "gold-per-hour box hidden.")
 	elseif msg == "goldlock" or msg == "lockgold" then
 		Say(LF.SetGoldLock() and "gold-per-hour box locked (shift-click it or /lflare goldlock to unlock)." or "gold-per-hour box unlocked: drag it to move.")
 	elseif msg == "history" or msg == "hist" or msg == "log" then
