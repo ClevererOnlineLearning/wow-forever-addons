@@ -206,6 +206,10 @@ local function Title(id)
 	return (Q(id, "name") or ("Quest " .. id)) .. ((type(lvl) == "number" and lvl > 0) and (" (" .. lvl .. ")") or "")
 end
 
+-- shared with Zone.lua
+QA.Q, QA.NPC, QA.OBJ, QA.ITEM, QA.Mod, QA.DB = Q, NPC, OBJ, ITEM, Mod, DB
+QA.Title, QA.Has, QA.FirstSpot, QA.Safe, QA.TAG = Title, Has, FirstSpot, Safe, TAG
+
 -- Map tooltip -------------------------------------------------------------------------------------
 
 -- only a quest's own icons (pick-up "!" and hand-in "?"), not its objective markers
@@ -479,7 +483,7 @@ function QA.HandInSpawns(questId)
 end
 
 -- spawns of a quest's targets, grouped into areas: { {map, x, y (0-1), count, targets = {"Name: kill"}}, ... }
-function QA.ObjectiveAreas(questId)
+function QA.ObjectiveAreas(questId, noHandIn)
 	local Z = Mod("ZoneDB")
 	if not (Z and Z.GetUiMapIdByAreaId) then return {} end
 	local cells, list = {}, {}
@@ -492,7 +496,7 @@ function QA.ObjectiveAreas(questId)
 		end
 	end
 	-- nothing to kill, use or find (a delivery or talk-to quest): mark where it's handed in
-	if not HasSpot(groups) then groups = QA.HandInSpawns(questId) end
+	if not HasSpot(groups) then groups = noHandIn and {} or QA.HandInSpawns(questId) end
 	for _, grp in ipairs(groups) do
 		local spawns, label = grp.spawns, grp.label
 		for area, pts in pairs(type(spawns) == "table" and spawns or {}) do
@@ -550,9 +554,9 @@ local function Layer()
 	return layer, canvas
 end
 
--- a map point (0-1 on map) as a point on the map being shown, or nil if it isn't on it
-local function ShownMapPoint(map, x, y)
-	local shown = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
+-- a map point (0-1 on map) as a point on another map (default: the one being shown), or nil if it isn't on it
+local function ShownMapPoint(map, x, y, onto)
+	local shown = onto or (WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID())
 	if not shown or not map then return nil end
 	if shown == map then return x, y end
 	local HBD = Mod("HBD")
@@ -560,6 +564,8 @@ local function ShownMapPoint(map, x, y)
 	local ok, tx, ty = pcall(HBD.TranslateZoneCoordinates, HBD, x, y, map, shown, true)
 	if ok and tx and ty and tx >= 0 and tx <= 1 and ty >= 0 and ty <= 1 then return tx, ty end
 end
+
+QA.Layer, QA.Canvas, QA.MapPoint = Layer, Canvas, ShownMapPoint
 
 local function PinOnEnter(pin)
 	local spot = pin.spot
@@ -969,6 +975,19 @@ SlashCmdList.QUESTAHEAD = function(msg)
 	msg = (msg or ""):lower()
 	if msg == "clear" then QA.Clear(); return end
 	if msg == "check" then QA.Check(); return end
+	if msg == "zone" and QA.PlanZone then
+		local map = WorldMapFrame and WorldMapFrame:IsShown() and WorldMapFrame:GetMapID()
+		QA.PlanZone(map or nil)
+		return
+	end
+	if (msg == "zone off" or msg == "zone clear") and QA.ZoneClear then QA.ZoneClear(); return end
+	if msg == "arrow" then
+		QuestAheadDB = type(QuestAheadDB) == "table" and QuestAheadDB or {}
+		QuestAheadDB.arrow = QuestAheadDB.arrow == false
+		print(TAG .. "TomTom arrow to the next zone-plan step " .. (QuestAheadDB.arrow and "on." or "off."))
+		if QA.ZoneArrow then QA.ZoneArrow() end
+		return
+	end
 	if msg == "debug" then
 		QA.debug = not QA.debug
 		if QA.debug then QuestAheadDB = QuestAheadDB or {}; QuestAheadDB.log = {} end
@@ -978,4 +997,6 @@ SlashCmdList.QUESTAHEAD = function(msg)
 	print("|cff9b6bffQuestAhead|r: hover a quest's ! (pick-up) or ? (hand-in) icon on the world map to see what it leads to and where. "
 		.. "Alt-click the icon to pin the follow-on givers; hover a pin for details, Alt-click a pin to look further. "
 		.. "/qahead clear removes the pins. /qahead check if nothing happens.")
+	print("|cff9b6bffQuestAhead|r: Plan zone (button on the world map, or /qahead zone): a route through the quests you can do "
+		.. "in the zone shown, with a guide window. /qahead zone off removes it; /qahead arrow turns the TomTom arrow on or off.")
 end
