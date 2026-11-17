@@ -631,7 +631,8 @@ function QA.Show(questId, origin)
 		end
 	end
 	if #spots == 0 and #areaSpots == 0 then
-		print("|cff9b6bffQuestAhead|r: no map spot known for what " .. (Q(questId, "name") or "that quest") .. " leads to.")
+		-- nothing to place (no follow-ons, or none Questie knows a spot for): stay quiet, the tooltip says so
+		if QA.debug then Dbg("nothing to pin for " .. tostring(Q(questId, "name") or questId)) end
 		return
 	end
 	QA.shownFor, QA.origin, QA.segments = questId, origin, segments
