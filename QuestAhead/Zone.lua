@@ -18,6 +18,8 @@ QA.PULLS = { 0.35, 0.6, 1 } -- tried in turn; the shortest route wins
 QA.SAME_SPOT = 0.004     -- closer than this (share of the map) is the same place
 QA.RUN_SPEED = 7         -- yards a second on foot, for the time estimate
 QA.ZONE_ROWS = 12        -- lines in the guide window
+QA.MAP_STEPS = 8         -- steps ahead shown on the map (the TomTom arrow and the guide have the rest)
+QA.MARK_MERGE = 20       -- markers closer than this (pixels) become one, numbered "4,7"
 QA.MARK_SHIFT = 14       -- step numbers sit this far up and right of the spot, off Questie's icon
 
 -- Player state (one place each, so tests can stand in for the game) ------------------------------
@@ -203,6 +205,33 @@ local function HasPeople(list)
 	return (type(list[1]) == "table" and list[1][1] ~= nil) or (type(list[2]) == "table" and list[2][1] ~= nil)
 end
 
+-- what's still left to do on a quest, from the log (or Questie's text)
+local function Unfinished(q)
+	local out = {}
+	if C_QuestLog and C_QuestLog.GetQuestObjectives then
+		local ok, objs = pcall(C_QuestLog.GetQuestObjectives, q)
+		for _, o in ipairs(ok and type(objs) == "table" and objs or {}) do
+			if not o.finished then out[#out + 1] = o end
+		end
+	end
+	return out
+end
+
+local function LeftToDo(q)
+	local out = {}
+	if C_QuestLog and C_QuestLog.GetQuestObjectives then
+		local ok, objs = pcall(C_QuestLog.GetQuestObjectives, q)
+		for _, o in ipairs(ok and type(objs) == "table" and objs or {}) do
+			if not o.finished and type(o.text) == "string" and o.text ~= "" then out[#out + 1] = o.text end
+		end
+	end
+	if #out == 0 then
+		local t = Q(q, "objectivesText")
+		if type(t) == "table" and type(t[1]) == "string" then out[1] = t[1] end
+	end
+	return table.concat(out, "; ")
+end
+
 -- a quest's part of the plan, or nil + why it can't be done here
 -- { id, inLog, pickup = spot?, objectives = { {label, cands = {spot, ...}}, ... }, handin = spot?, handinAway = name? }
 function QA.ZoneQuest(id, map, logEntry)
@@ -240,6 +269,12 @@ function QA.ZoneQuest(id, map, logEntry)
 	end
 	local fin = Q(id, "finishedBy")
 	rec.handin = PersonOn(fin, map)
+	if logEntry and not logEntry.complete and #rec.objectives == 0 and #Unfinished(id) > 0 then
+		rec.unknown = LeftToDo(id)
+		rec.laterHandin = rec.handin and rec.handin.name or nil
+		rec.handin = nil
+		return rec
+	end
 	if rec.partly and rec.handin then
 		-- some of its work is in another zone: it can't be handed in on this trip
 		rec.handinAway, rec.handin = rec.handin.name, nil
@@ -247,7 +282,7 @@ function QA.ZoneQuest(id, map, logEntry)
 		local i = (type(fin[1]) == "table" and fin[1][1]) and 1 or 2
 		rec.handinAway = (i == 1 and NPC or OBJ)(fin[i][1], "name") or "?"
 	end
-	if logEntry and not rec.handin and #rec.objectives == 0 then return nil, "nothing for it here" end
+	if logEntry and not rec.handin and #rec.objectives == 0 and not rec.unknown then return nil, "nothing for it here" end
 	return rec
 end
 
@@ -470,7 +505,7 @@ function QA.BuildZoneRoute(map, quests, start, pull)
 		if best.kind == "pickup" then
 			local r = best.r
 			r.picked, active = true, active + 1
-			visit(r.pickup, { kind = "pickup", quests = { r.id }, text = "Pick up " .. Names({ r.id }) .. " from " .. r.pickup.name })
+			visit(r.pickup, { kind = "pickup", quests = { r.id }, deps = r.deps, text = "Pick up " .. Names({ r.id }) .. " from " .. r.pickup.name })
 			settle(r)
 		elseif best.kind == "handin" then
 			local r = best.r
@@ -508,7 +543,12 @@ function QA.BuildZoneRoute(map, quests, start, pull)
 	-- left in the log at the end: hand-ins somewhere else
 	local away = {}
 	for _, r in ipairs(quests) do
-		if r.handinAway and r.picked then away[#away + 1] = Names({ r.id }) .. " to " .. r.handinAway end
+		if r.unknown then
+			away[#away + 1] = { unknown = r.id, text = "|cffff9933Not on the map:|r " .. Names({ r.id }) .. " - " .. (r.unknown ~= "" and r.unknown or "finish it")
+				.. (r.laterHandin and (", then hand in to " .. r.laterHandin) or "") }
+		elseif r.handinAway and r.picked then
+			away[#away + 1] = { text = "|cffff9933Later, elsewhere:|r hand in " .. Names({ r.id }) .. " to " .. r.handinAway }
+		end
 	end
 	return stops, travel, away
 end
@@ -559,7 +599,7 @@ function QA.PlanZone(map, quiet)
 		for _, st in ipairs(s) do n = n + #st.actions end
 		if not most or n > most or (n == most and t < travel) then stops, travel, away, most = s, t, a, n end
 	end
-	if #stops == 0 then
+	if #stops == 0 and #away == 0 then
 		if not quiet then
 			local full = 0
 			for _ in pairs(QA.QuestLog()) do full = full + 1 end
@@ -617,6 +657,18 @@ end
 
 local function ActionDone(a, log)
 	if a.done then return true end
+	-- a hand-in for a quest you have but haven't finished waits (Questie may not know where its work is)
+	a.waiting = nil
+	if a.kind == "pickup" then
+		for _, d in ipairs(a.deps or {}) do
+			if not Done(d) then a.waiting = "after " .. (Q(d, "name") or "the quest before") .. " is handed in" end
+		end
+	else
+		for _, q in ipairs(a.quests) do
+			if not Done(q) and not log[q] then a.waiting = "pick it up first"
+			elseif a.kind == "handin" and not Done(q) and not log[q].complete then a.waiting = LeftToDo(q) end
+		end
+	end
 	local all = #a.quests > 0
 	for _, q in ipairs(a.quests) do
 		local d
@@ -629,21 +681,43 @@ local function ActionDone(a, log)
 	return a.done or false
 end
 
+-- the first step with something you can do now; hand-ins still waiting on work are passed over
+local function Open(s)
+	local any = false
+	for _, a in ipairs(s.actions) do
+		if not a.done then
+			if not a.waiting then return "now" end
+			any = true
+		end
+	end
+	return any and "waiting" or nil
+end
+QA.StopState = Open
+
 function QA.ZoneCurrent()
 	local p = QA.zone
 	if not p then return nil end
+	local firstWaiting
 	for i, s in ipairs(p.stops) do
-		for _, a in ipairs(s.actions) do
-			if not a.done then return i end
-		end
+		local st = Open(s)
+		if st == "now" then return i end
+		if st == "waiting" and not firstWaiting then firstWaiting = i end
 	end
-	return #p.stops + 1
+	return firstWaiting or (#p.stops + 1)
 end
 
 function QA.ZoneRefresh()
 	local p = QA.zone
 	if not p then return end
 	local log = QA.QuestLog()
+	for _, t in ipairs(p.away or {}) do
+		if t.unknown and (Done(t.unknown) or (log[t.unknown] and log[t.unknown].complete)) and not QA.replanning then
+			QA.replanning = true
+			QA.PlanZone(p.map, true)
+			QA.replanning = nil
+			return
+		end
+	end
 	for _, s in ipairs(p.stops) do
 		for _, a in ipairs(s.actions) do ActionDone(a, log) end
 	end
@@ -676,7 +750,7 @@ function QA.ZoneArrow()
 	local plain = (a.text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
 	local ok, uid = pcall(TT.AddWaypoint, TT, p.map, s.x, s.y,
 		{ title = "QuestAhead " .. i .. ": " .. plain, persistent = false, minimap = true, world = false, crazy = true,
-			silent = true, from = "QuestAhead" })
+			silent = true, cleardistance = 0, from = "QuestAhead" })
 	if ok then wayUid, wayFor = uid, s end
 end
 
@@ -704,12 +778,16 @@ local function GuideRows()
 			local num = (j == 1) and (i .. ". ") or "     "
 			local text
 			if a.done then text = "|cff808080" .. num .. CHECK .. (a.text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") .. "|r"
+			elseif a.waiting then
+				local why = (a.kind == "pickup" or a.waiting == "pick it up first") and a.waiting
+					or ("finish it first" .. (a.waiting ~= "" and (": " .. a.waiting) or ""))
+				text = "|cff808080" .. num .. "|r" .. (a.text or "") .. " |cffff9933(" .. why .. ")|r"
 			elseif i == cur then text = "|cffffff00" .. num .. "|r" .. (a.text or "")
 			else text = "|cffc0c0c0" .. num .. "|r" .. (a.text or "") end
 			rows[#rows + 1] = { stop = i, text = text }
 		end
 	end
-	for _, t in ipairs(p.away or {}) do rows[#rows + 1] = { stop = #p.stops + 1, text = "|cffff9933Later, elsewhere:|r hand in " .. t } end
+	for _, t in ipairs(p.away or {}) do rows[#rows + 1] = { stop = #p.stops + 1, text = t.text } end
 	return rows
 end
 
@@ -832,18 +910,27 @@ local function MarkerOnEnter(f)
 	local p, s = QA.zone, f.stop
 	if not (p and s) then return end
 	GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
-	GameTooltip:AddLine("Step " .. f.num, 1, 0.82, 0)
-	for _, a in ipairs(s.actions) do GameTooltip:AddLine(a.text, 1, 1, 1, true) end
+	for k, st in ipairs(f.stopsHere or { s }) do
+		if k > 1 then GameTooltip:AddLine(" ") end
+		GameTooltip:AddLine("Step " .. (f.nums and f.nums[k] or f.num), 1, 0.82, 0)
+		for _, a in ipairs(st.actions) do if not a.done then GameTooltip:AddLine(a.text, 1, 1, 1, true) end end
+	end
 	GameTooltip:Show()
 end
 
 local function NewMarker(parent)
 	local f = CreateFrame("Frame", nil, parent)
-	f:SetSize(20, 20)
+	f:SetSize(22, 22)
+	f.ring = f:CreateTexture(nil, "BORDER")
+	f.ring:SetPoint("TOPLEFT", -2, 2)
+	f.ring:SetPoint("BOTTOMRIGHT", 2, -2)
+	f.ring:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
+	f.ring:SetVertexColor(0, 0, 0, 0.9)
 	f.bg = f:CreateTexture(nil, "ARTWORK")
 	f.bg:SetAllPoints()
 	f.bg:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
-	f.label = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	f.label = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	if f.label.SetFont and STANDARD_TEXT_FONT then f.label:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE") end
 	f.label:SetPoint("CENTER", 0, 0)
 	f:EnableMouse(true)
 	if f.SetMouseClickEnabled then f:SetMouseClickEnabled(false) end
@@ -862,24 +949,40 @@ function QA.ZoneRedraw()
 	local lay, canvas = QA.Layer()
 	if not lay then return end
 	local w, h = canvas:GetWidth() or 0, canvas:GetHeight() or 0
+	if w <= 0 or h <= 0 then return end
 	local cur = QA.ZoneCurrent()
-	local n, prev, ln = 0, nil, 0
+	local n, prev, ln, shown = 0, nil, 0, 0
 	for i = cur, #p.stops do
 		local s = p.stops[i]
 		local x, y = QA.MapPoint(p.map, s.x, s.y)
-		if x then
-			n = n + 1
-			local m = markers[n] or NewMarker(lay)
-			markers[n] = m
-			m.stop, m.num = s, i
-			local c = KIND_COLOR[s.actions[1].kind] or KIND_COLOR.work
-			m.bg:SetVertexColor(c[1], c[2], c[3], i == cur and 1 or 0.8)
-			m:SetSize(i == cur and 26 or 20, i == cur and 26 or 20)
-			m.label:SetText(tostring(i))
-			m:ClearAllPoints()
-			m:SetPoint("CENTER", canvas, "TOPLEFT", x * w + QA.MARK_SHIFT, -y * h + QA.MARK_SHIFT)
-			m:Show()
-			if prev and lay.CreateLine then
+		if x and Open(s) == "now" and shown < QA.MAP_STEPS then
+			shown = shown + 1
+			local px, py = x * w, y * h
+			-- right on top of a marker already placed: add the number to it
+			local m
+			for k = 1, n do
+				local o = markers[k]
+				if math.abs(o.px - px) < QA.MARK_MERGE and math.abs(o.py - py) < QA.MARK_MERGE then m = o; break end
+			end
+			if m then
+				m.stopsHere[#m.stopsHere + 1] = s
+				m.nums[#m.nums + 1] = i
+				m.label:SetText(table.concat(m.nums, ","))
+			else
+				n = n + 1
+				m = markers[n] or NewMarker(lay)
+				markers[n] = m
+				m.stop, m.num, m.px, m.py, m.stopsHere, m.nums = s, i, px, py, { s }, { i }
+				local c = KIND_COLOR[s.actions[1].kind] or KIND_COLOR.work
+				m.bg:SetVertexColor(c[1], c[2], c[3], 1)
+				m:SetSize(i == cur and 30 or 22, i == cur and 30 or 22)
+				m.label:SetText(tostring(i))
+				m:ClearAllPoints()
+				m:SetPoint("CENTER", canvas, "TOPLEFT", px + QA.MARK_SHIFT, -py + QA.MARK_SHIFT)
+				m:Show()
+			end
+			x, y = m.px / w, m.py / h
+			if prev and lay.CreateLine and (prev[1] ~= x or prev[2] ~= y) then
 				ln = ln + 1
 				local l = zlines[ln]
 				if not l then
