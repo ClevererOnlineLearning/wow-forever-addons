@@ -14,6 +14,17 @@ QA.MAX_QUESTS = 3     -- quests per tooltip that get a follow-on section
 QA.stats = { hooked = false, hovers = 0, shown = 0, errors = 0 } -- for /qahead check
 local TAG = "|cff9b6bffQuestAhead|r: "
 
+-- debug lines go to chat and to QuestAheadDB.log (kept across /reload, for reading outside the game)
+local function Dbg(msg)
+	print(TAG .. msg)
+	QuestAheadDB = type(QuestAheadDB) == "table" and QuestAheadDB or {}
+	QuestAheadDB.log = type(QuestAheadDB.log) == "table" and QuestAheadDB.log or {}
+	local log = QuestAheadDB.log
+	log[#log + 1] = (date and date("%H:%M:%S ") or "") .. msg
+	while #log > 150 do table.remove(log, 1) end
+end
+QA.Dbg = Dbg
+
 -- run fn, keeping (not hiding) any error for /qahead check
 local function Safe(fn, ...)
 	local ok, err = pcall(fn, ...)
@@ -225,7 +236,7 @@ function QA.OnQuestieTooltip(icon, tt)
 	QA.stats.hovers = QA.stats.hovers + 1
 	if QA.debug then
 		local d = icon and icon.data or {}
-		print(TAG .. "hover: type=" .. tostring(d.Type) .. " quest=" .. tostring(d.Id)
+		Dbg("hover: type=" .. tostring(d.Type) .. " quest=" .. tostring(d.Id)
 			.. " minimap=" .. tostring(icon and icon.miniMapIcon) .. " rebuild=" .. tostring(tt and type(tt._Rebuild)))
 	end
 	if not tt or not icon or icon.miniMapIcon then return end
@@ -246,7 +257,7 @@ function QA.OnQuestieTooltip(icon, tt)
 	if Safe(QA.AddTooltip, tt) then QA.stats.shown = QA.stats.shown + 1 end
 	if QA.debug then
 		local n = #TooltipQuests(tt)
-		print(TAG .. "  quests with follow-on checks: " .. n
+		Dbg("  quests with follow-on checks: " .. n
 			.. (QA.stats.lastError and (", last error: " .. QA.stats.lastError) or "")
 			.. (before and (", lines " .. before .. " -> " .. tostring(tt:NumLines())) or ""))
 	end
@@ -436,6 +447,17 @@ ev:SetScript("OnEvent", function()
 		return
 	end
 	hooksecurefunc(MIT, "ShowOnTooltip", QA.OnQuestieTooltip)
+	-- debug: note every tooltip shown while the map is open, whoever owns it
+	if GameTooltip and GameTooltip.HookScript then
+		GameTooltip:HookScript("OnShow", function(tt)
+			if not QA.debug or not (WorldMapFrame and WorldMapFrame:IsShown()) then return end
+			local o = tt.GetOwner and tt:GetOwner()
+			local name = o and ((o.GetDebugName and o:GetDebugName()) or (o.GetName and o:GetName())) or "?"
+			local first = _G.GameTooltipTextLeft1 and _G.GameTooltipTextLeft1:GetText()
+			Dbg("tooltip: owner=" .. tostring(name) .. " questie=" .. tostring(o and o.data ~= nil)
+				.. " first line=" .. tostring(first))
+		end)
+	end
 	QA.stats.hooked = true
 	print(TAG .. "on. Hover a quest's ! or ? on the world map to see what it leads to; Alt-click it to pin them. /qahead")
 	if WorldMapFrame then
@@ -468,6 +490,7 @@ SlashCmdList.QUESTAHEAD = function(msg)
 	if msg == "check" then QA.Check(); return end
 	if msg == "debug" then
 		QA.debug = not QA.debug
+		if QA.debug then QuestAheadDB = QuestAheadDB or {}; QuestAheadDB.log = {} end
 		print(TAG .. "debug " .. (QA.debug and "on: each map icon hover is reported in chat." or "off."))
 		return
 	end
