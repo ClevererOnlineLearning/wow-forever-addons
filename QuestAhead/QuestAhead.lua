@@ -223,6 +223,11 @@ end
 -- After Questie builds an icon's tooltip, add ours, and again whenever Questie rebuilds it (Shift)
 function QA.OnQuestieTooltip(icon, tt)
 	QA.stats.hovers = QA.stats.hovers + 1
+	if QA.debug then
+		local d = icon and icon.data or {}
+		print(TAG .. "hover: type=" .. tostring(d.Type) .. " quest=" .. tostring(d.Id)
+			.. " minimap=" .. tostring(icon and icon.miniMapIcon) .. " rebuild=" .. tostring(tt and type(tt._Rebuild)))
+	end
 	if not tt or not icon or icon.miniMapIcon then return end
 	if not icon.__qaHooked and icon.HookScript then
 		icon.__qaHooked = true
@@ -237,7 +242,14 @@ function QA.OnQuestieTooltip(icon, tt)
 	end
 	tt.__qaWrapper = wrapper
 	tt._Rebuild = wrapper
+	local before = tt.NumLines and tt:NumLines()
 	if Safe(QA.AddTooltip, tt) then QA.stats.shown = QA.stats.shown + 1 end
+	if QA.debug then
+		local n = #TooltipQuests(tt)
+		print(TAG .. "  quests with follow-on checks: " .. n
+			.. (QA.stats.lastError and (", last error: " .. QA.stats.lastError) or "")
+			.. (before and (", lines " .. before .. " -> " .. tostring(tt:NumLines())) or ""))
+	end
 	tt:Show()
 end
 
@@ -454,6 +466,11 @@ SlashCmdList.QUESTAHEAD = function(msg)
 	msg = (msg or ""):lower()
 	if msg == "clear" then QA.Clear(); return end
 	if msg == "check" then QA.Check(); return end
+	if msg == "debug" then
+		QA.debug = not QA.debug
+		print(TAG .. "debug " .. (QA.debug and "on: each map icon hover is reported in chat." or "off."))
+		return
+	end
 	print("|cff9b6bffQuestAhead|r: hover a quest's ! (pick-up) or ? (hand-in) icon on the world map to see what it leads to and where. "
 		.. "Alt-click the icon to pin the follow-on givers; hover a pin for details, Alt-click a pin to look further. "
 		.. "/qahead clear removes the pins. /qahead check if nothing happens.")
