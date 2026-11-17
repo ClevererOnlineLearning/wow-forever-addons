@@ -667,7 +667,7 @@ function QA.Redraw()
 	end
 	if not lay.CreateLine then return end
 	local n = 0
-	local function seg(a, b)
+	local function seg(a, b, step)
 		if not a or not b then return end
 		local x1, y1 = ShownMapPoint(a.map, a.x, a.y)
 		local x2, y2 = ShownMapPoint(b.map, b.x, b.y)
@@ -677,17 +677,96 @@ function QA.Redraw()
 		if not l then
 			l = lay:CreateLine(nil, "ARTWORK")
 			if l.SetThickness then l:SetThickness(3) end
-			l:SetColorTexture(0.7, 0.45, 1, 0.65)
 			lines[n] = l
 		end
+		local r, g, bl = QA.StepColor(step or 1)
+		l:SetColorTexture(r, g, bl, 0.8)
 		l:SetStartPoint("TOPLEFT", canvas, x1 * w, -y1 * h)
 		l:SetEndPoint("TOPLEFT", canvas, x2 * w, -y2 * h)
 		l:Show()
 	end
-	for _, sg in ipairs(QA.segments or {}) do
-		seg(sg.from == "origin" and QA.origin or sg.from, sg.spot)
-	end
+	local route = QA.route or {}
+	for i = 2, #route do seg(route[i - 1], route[i], route[i].step) end
 end
+
+-- The suggested route (straight lines; WoW gives add-ons no roads or terrain): from where you
+-- are, step by step: that step's pick-ups, then one spot per objective, then its hand-ins, each
+-- time going to the nearest next place. steps = { {entry, spot?, areas, handin?}, ... }
+local function Dist(a, b)
+	if a.map ~= b.map then return 100 end
+	local dx, dy = a.x - b.x, a.y - b.y
+	return dx * dx + dy * dy
+end
+
+function QA.BuildRoute(origin, steps)
+	local route, pos = {}, nil
+	local function go(pt, step)
+		if pos and pt.map == pos.map and math.abs(pt.x - pos.x) < 0.002 and math.abs(pt.y - pos.y) < 0.002 then return end
+		route[#route + 1] = { map = pt.map, x = pt.x, y = pt.y, step = step }
+		pos = pt
+	end
+	if origin and origin.map and origin.x then go(origin, 0) end
+	local function nearestFirst(points, step)
+		local left = {}
+		for _, p in ipairs(points) do left[#left + 1] = p end
+		while #left > 0 do
+			local bi, bd = 1, math.huge
+			if pos then
+				for i, p in ipairs(left) do local d = Dist(pos, p); if d < bd then bi, bd = i, d end end
+			end
+			go(table.remove(left, bi), step)
+		end
+	end
+	local byStep, order = {}, {}
+	for _, sd in ipairs(steps) do
+		local k = sd.entry.step
+		if not byStep[k] then byStep[k] = {}; order[#order + 1] = k end
+		table.insert(byStep[k], sd)
+	end
+	table.sort(order)
+	for _, k in ipairs(order) do
+		local list = byStep[k]
+		local picks, seenPick = {}, {}
+		for _, sd in ipairs(list) do
+			if sd.spot and not seenPick[sd.spot] then seenPick[sd.spot] = true; picks[#picks + 1] = sd.spot end
+		end
+		nearestFirst(picks, k)
+		-- each objective (quest + target) needs one of its areas; go to the nearest wanted area each time
+		local pending = {}
+		for _, sd in ipairs(list) do
+			local wanted = {}
+			for _, a in ipairs(sd.areas or {}) do
+				for _, t in ipairs(a.targets or {}) do
+					if not wanted[t] then wanted[t] = {}; pending[#pending + 1] = wanted[t] end
+					table.insert(wanted[t], a)
+				end
+			end
+		end
+		while #pending > 0 do
+			local best, bd = nil, math.huge
+			for _, cands in ipairs(pending) do
+				for _, a in ipairs(cands) do
+					local d = pos and Dist(pos, a) or 0
+					if d < bd then best, bd = a, d end
+				end
+			end
+			go(best, k)
+			local still = {}
+			for _, cands in ipairs(pending) do
+				local done = false
+				for _, a in ipairs(cands) do if a == best then done = true end end
+				if not done then still[#still + 1] = cands end
+			end
+			pending = still
+		end
+		local ins = {}
+		for _, sd in ipairs(list) do if sd.handin then ins[#ins + 1] = sd.handin end end
+		nearestFirst(ins, k)
+	end
+	return route
+end
+
+function QA.Route() return QA.route or {} end
 
 function QA.Clear()
 	for _, s in ipairs(spots) do
@@ -698,7 +777,7 @@ function QA.Clear()
 		if a.frame then a.frame:Hide(); a.frame.area = nil; areaPool[#areaPool + 1] = a.frame end
 	end
 	areaSpots = {}
-	QA.shownFor, QA.origin, QA.segments = nil, nil, nil
+	QA.shownFor, QA.origin, QA.segments, QA.route = nil, nil, nil, nil
 	for _, l in ipairs(lines) do l:Hide() end
 end
 
@@ -710,7 +789,7 @@ function QA.Show(questId, origin)
 	QA.Clear()
 	local Z = Mod("ZoneDB")
 	if not (Z and Z.GetUiMapIdByAreaId) then return end
-	local byspot, segments = {}, {}
+	local byspot, segments, routeSteps = {}, {}, {}
 	local from = { [questId] = "origin" } -- quest -> the spot its follow-ons' lines start from
 	for _, e in ipairs(QA.Follow(questId)) do
 		local st = QA.Starter(e.id, origin and origin.area)
@@ -743,6 +822,13 @@ function QA.Show(questId, origin)
 		from[e.id] = spot or parentFrom
 		-- steps whose work is in the same place share one marker ("1,2,3"), so none hides another
 		local found, mapsUsed = QA.ObjectiveAreas(e.id), {}
+		local hin
+		do
+			local a, hx, hy = QA.FinisherSpot(e.id, origin and origin.area)
+			local hm = a and Z:GetUiMapIdByAreaId(a)
+			if hm then hin = { map = hm, x = hx / 100, y = hy / 100 } end
+		end
+		routeSteps[#routeSteps + 1] = { entry = e, spot = spot, areas = found, handin = hin }
 		for _, a in ipairs(found) do
 			mapsUsed[#mapsUsed + 1] = tostring(a.map)
 			local hit
@@ -791,6 +877,7 @@ function QA.Show(questId, origin)
 		return
 	end
 	QA.shownFor, QA.origin, QA.segments = questId, origin, segments
+	QA.route = QA.BuildRoute(origin, routeSteps)
 	QA.Redraw()
 end
 
