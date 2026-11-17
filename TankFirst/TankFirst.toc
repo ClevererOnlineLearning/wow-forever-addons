@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: TankFirst
-## Notes: Group Finder: while your group has no tank, players offering Tank go to the top of the list and glow blue; healers come next (green) while your group has no healer. /tanks
-## Version: 1.1
+## Notes: Group Finder: while your group has no tank, players offering Tank go to the top of the list and glow blue; healers come next (green) while your group has no healer. Double-click a player to invite them. /tanks
+## Version: 1.2
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
 ## SavedVariables: TankFirstDB
