@@ -11,6 +11,18 @@ _G.QuestAhead = QA
 
 QA.MAX_CHAIN = 6      -- how far down a chain to follow
 QA.MAX_QUESTS = 3     -- quests per tooltip that get a follow-on section
+QA.stats = { hooked = false, hovers = 0, shown = 0, errors = 0 } -- for /qahead check
+local TAG = "|cff9b6bffQuestAhead|r: "
+
+-- run fn, keeping (not hiding) any error for /qahead check
+local function Safe(fn, ...)
+	local ok, err = pcall(fn, ...)
+	if not ok then
+		QA.stats.errors = QA.stats.errors + 1
+		QA.stats.lastError = tostring(err)
+	end
+	return ok
+end
 
 local function Mod(name)
 	if not (QuestieLoader and QuestieLoader.ImportModule) then return nil end
@@ -204,6 +216,7 @@ end
 
 -- After Questie builds an icon's tooltip, add ours, and again whenever Questie rebuilds it (Shift)
 function QA.OnQuestieTooltip(icon, tt)
+	QA.stats.hovers = QA.stats.hovers + 1
 	if not tt or not icon or icon.miniMapIcon then return end
 	if not icon.__qaHooked and icon.HookScript then
 		icon.__qaHooked = true
@@ -214,11 +227,11 @@ function QA.OnQuestieTooltip(icon, tt)
 	local wrapper
 	wrapper = function(self, ...)
 		rb(self, ...)
-		if self._Rebuild == wrapper then pcall(QA.AddTooltip, self) end
+		if self._Rebuild == wrapper then Safe(QA.AddTooltip, self) end
 	end
 	tt.__qaWrapper = wrapper
 	tt._Rebuild = wrapper
-	pcall(QA.AddTooltip, tt)
+	if Safe(QA.AddTooltip, tt) then QA.stats.shown = QA.stats.shown + 1 end
 	tt:Show()
 end
 
@@ -401,21 +414,41 @@ ev:RegisterEvent("PLAYER_LOGIN")
 ev:SetScript("OnEvent", function()
 	local MIT = Mod("MapIconTooltip")
 	if not (MIT and type(MIT.ShowOnTooltip) == "function") then
-		print("|cff9b6bffQuestAhead|r: needs Questie, which isn't loaded.")
+		print(TAG .. "needs Questie, which isn't loaded.")
 		return
 	end
 	hooksecurefunc(MIT, "ShowOnTooltip", QA.OnQuestieTooltip)
+	QA.stats.hooked = true
+	print(TAG .. "on. Hover a quest's icon on the world map to see what it leads to; Alt-click it to pin them. /qahead")
 	if WorldMapFrame then
 		WorldMapFrame:HookScript("OnHide", QA.Clear)
 		if type(WorldMapFrame.OnMapChanged) == "function" then hooksecurefunc(WorldMapFrame, "OnMapChanged", QA.Redraw) end
 	end
 end)
 
+function QA.Check()
+	local st = QA.stats
+	if not (QuestieLoader and QuestieLoader.ImportModule) then
+		print(TAG .. "Questie isn't loaded, so there is nothing to add to.")
+		return
+	end
+	local MIT = Mod("MapIconTooltip")
+	print(TAG .. "Questie's map tooltip " .. ((MIT and type(MIT.ShowOnTooltip) == "function") and "found" or "NOT found")
+		.. "; " .. (st.hooked and "hooked" or "NOT hooked") .. ".")
+	print(TAG .. "map icon hovers seen: " .. st.hovers .. ", follow-on sections added: " .. st.shown .. ", errors: " .. st.errors)
+	if st.lastError then print(TAG .. "last error: " .. st.lastError) end
+	local db = DB()
+	local n = 0
+	if db and type(db.QuestPointers) == "table" then for _ in pairs(db.QuestPointers) do n = n + 1 end end
+	print(TAG .. "quests in Questie's data: " .. n)
+end
+
 SLASH_QUESTAHEAD1 = "/qahead"
 SlashCmdList.QUESTAHEAD = function(msg)
 	msg = (msg or ""):lower()
 	if msg == "clear" then QA.Clear(); return end
+	if msg == "check" then QA.Check(); return end
 	print("|cff9b6bffQuestAhead|r: hover a quest's icon on the world map to see what it leads to and where. "
 		.. "Alt-click the icon to pin the follow-on givers; hover a pin for details, Alt-click a pin to look further. "
-		.. "/qahead clear removes the pins.")
+		.. "/qahead clear removes the pins. /qahead check if nothing happens.")
 end
