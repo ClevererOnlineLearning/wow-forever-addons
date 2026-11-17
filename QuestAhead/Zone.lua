@@ -101,6 +101,26 @@ end
 -- Where things are, on the plan's map -------------------------------------------------------------
 
 local spotCache = {}
+
+-- is map m this zone, or an area inside it (a sub-zone map)? Next-door zones don't count, even though
+-- their map rectangles overlap this one's edges.
+local within = {}
+local function Within(m, map)
+	if m == map then return true end
+	local key = m .. ">" .. map
+	if within[key] == nil then
+		local found, cur = false, m
+		for _ = 1, 4 do
+			local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(cur)
+			local parent = info and info.parentMapID
+			if not parent or parent == 0 then break end
+			if parent == map then found = true; break end
+			cur = parent
+		end
+		within[key] = found
+	end
+	return within[key]
+end
 local SpawnsOn, HasSpawns, FirstMap
 -- every spawn of an NPC/object that lies on the map: { {x, y (0-1)}, ... }
 local function SpotsOn(kind, id, map)
@@ -112,6 +132,7 @@ local function SpotsOn(kind, id, map)
 	if type(spawns) == "table" and Z and Z.GetUiMapIdByAreaId then
 		for area, pts in pairs(spawns) do
 			local m = Z:GetUiMapIdByAreaId(area)
+			if m and not Within(m, map) then m = nil end
 			local misses = 0
 			for _, pt in ipairs(m and type(pts) == "table" and pts or {}) do
 				if type(pt[1]) == "number" and type(pt[2]) == "number" and pt[1] >= 0 and pt[2] >= 0 then
@@ -147,6 +168,7 @@ SpawnsOn = function(spawns, map)
 	if type(spawns) ~= "table" or not (Z and Z.GetUiMapIdByAreaId) then return out end
 	for area, pts in pairs(spawns) do
 		local m = Z:GetUiMapIdByAreaId(area)
+		if m and not Within(m, map) then m = nil end
 		local misses = 0
 		for _, pt in ipairs(m and type(pts) == "table" and pts or {}) do
 			if type(pt[1]) == "number" and type(pt[2]) == "number" and pt[1] >= 0 and pt[2] >= 0 then
@@ -882,7 +904,7 @@ local function MapButton()
 	if not parent or QA.mapButton then return end
 	local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
 	b:SetSize(84, 20)
-	b:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -8)
+	b:SetPoint("TOPLEFT", parent, "TOPLEFT", 52, -8)
 	if b.SetFrameLevel and parent.GetFrameLevel then b:SetFrameLevel((parent:GetFrameLevel() or 0) + 2100) end
 	b:SetText("Plan zone")
 	b:SetScript("OnClick", function()
