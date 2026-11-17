@@ -1,6 +1,7 @@
 -- QuestAhead: on Questie's world map icons, see what a quest leads to and where.
 -- Hover a quest's "!" or "?" icon: its follow-on quests and where each one starts.
--- Alt-click it: pins at the follow-on quest givers (numbered in chain order), joined by lines.
+-- Alt-click it: pins at the givers of the whole chain (numbered by step), joined by lines, and
+-- markers where each step's work is.
 -- Hover a pin for that quest's details; Alt-click a pin to look one step further.
 -- Reads Questie's quest data through Questie's own modules; changes nothing in Questie.
 -- by good mens (Mephz on WoW Forever)
@@ -9,7 +10,8 @@ local ADDON = ...
 local QA = {}
 _G.QuestAhead = QA
 
-QA.MAX_CHAIN = 6      -- how far down a chain to follow
+QA.MAX_CHAIN = 6      -- how many steps down a chain to follow
+QA.MAX_FOLLOW = 12    -- most follow-on quests shown for one quest
 QA.MAX_QUESTS = 3     -- quests per tooltip that get a follow-on section
 QA.MAX_AREAS = 6      -- objective area markers per follow-on quest
 QA.AREA_CELL = 0.08   -- spawns closer than this (share of the map) make one area
@@ -96,22 +98,30 @@ function QA.BuildIndex()
 end
 
 -- { {id=, kind="next", step=n} ..., {id=, kind="unlock", group=bool} ... }
+-- The whole chain after a quest, however Questie links it: "next in chain" and "needs this done
+-- first", followed at every step, nearest first.
+-- { {id=, step=n (steps away), parent=quest it follows, kind="next"|"unlock", group=bool}, ... }
 function QA.Follow(questId)
-	local out, seen = {}, { [questId] = true }
-	local cur, step = questId, 0
-	while step < QA.MAX_CHAIN do
-		local n = Q(cur, "nextQuestInChain")
-		if type(n) ~= "number" or n <= 0 or seen[n] or not QA.Applicable(n) then break end
-		seen[n] = true
-		step = step + 1
-		out[#out + 1] = { id = n, kind = "next", step = step }
-		cur = n
-	end
 	if not unlocks then QA.BuildIndex() end
-	for _, u in ipairs(unlocks[questId] or {}) do
-		if not seen[u.id] and QA.Applicable(u.id) then
-			seen[u.id] = true
-			out[#out + 1] = { id = u.id, kind = "unlock", group = u.group }
+	local out, seen = {}, { [questId] = true }
+	local queue, head = { { id = questId, step = 0 } }, 1
+	while queue[head] and #out < QA.MAX_FOLLOW do
+		local cur = queue[head]
+		head = head + 1
+		if cur.step < QA.MAX_CHAIN then
+			local kids = {}
+			local n = Q(cur.id, "nextQuestInChain")
+			if type(n) == "number" and n > 0 then kids[#kids + 1] = { id = n, kind = "next" } end
+			for _, u in ipairs(unlocks[cur.id] or {}) do kids[#kids + 1] = { id = u.id, kind = "unlock", group = u.group } end
+			for _, k in ipairs(kids) do
+				if #out >= QA.MAX_FOLLOW then break end
+				if not seen[k.id] and QA.Applicable(k.id) then
+					seen[k.id] = true
+					local e = { id = k.id, kind = k.kind, group = k.group, step = cur.step + 1, parent = cur.id }
+					out[#out + 1] = e
+					queue[#queue + 1] = e
+				end
+			end
 		end
 	end
 	return out
@@ -225,7 +235,7 @@ function QA.AddSection(tt, list, here)
 			any = true
 			tt:AddLine("Leads to (after " .. (Q(qid, "name") or qid) .. "):", 1, 0.82, 0)
 			for _, e in ipairs(f) do
-				local left = (e.kind == "next" and ("  " .. e.step .. ". ") or "  + ") .. Title(e.id)
+				local left = "  " .. string.rep("  ", e.step - 1) .. e.step .. ". " .. Title(e.id)
 				if e.group then left = left .. " |cff999999(needs other quests too)|r" end
 				local w, r, g, b = QA.Where(e.id, qid, here)
 				tt:AddDoubleLine(left, w, 1, 1, 1, r, g, b)
@@ -457,7 +467,7 @@ local function PinOnEnter(pin)
 	GameTooltip:SetOwner(pin, "ANCHOR_RIGHT")
 	for i, e in ipairs(spot.entries) do
 		if i > 1 then GameTooltip:AddLine(" ") end
-		GameTooltip:AddLine((e.kind == "next" and (e.step .. ". ") or "+ ") .. Title(e.id), 1, 0.82, 0)
+		GameTooltip:AddLine(e.step .. ". " .. Title(e.id), 1, 0.82, 0)
 		GameTooltip:AddLine("Given by " .. (spot.starter.name or "?") .. " (" .. QA.ZoneName(spot.starter.area) .. ")", 0.8, 0.8, 0.8)
 		if e.group then GameTooltip:AddLine("Needs other quests done too", 1, 0.5, 0.3) end
 		local obj = Q(e.id, "objectivesText")
@@ -498,7 +508,7 @@ local function AreaOnEnter(f)
 	if not a then return end
 	GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
 	local e = a.entry
-	GameTooltip:AddLine((e.kind == "next" and (e.step .. ". ") or "+ ") .. Title(e.id), 1, 0.82, 0)
+	GameTooltip:AddLine(e.step .. ". " .. Title(e.id), 1, 0.82, 0)
 	GameTooltip:AddLine("Where this quest's work is:", 0.8, 0.8, 0.8)
 	for _, t in ipairs(a.targets) do GameTooltip:AddLine("  " .. t, 1, 0.7, 0.35) end
 	local obj = Q(e.id, "objectivesText")
@@ -576,10 +586,8 @@ function QA.Redraw()
 		l:SetEndPoint("TOPLEFT", canvas, x2 * w, -y2 * h)
 		l:Show()
 	end
-	local prev = QA.origin
 	for _, sg in ipairs(QA.segments or {}) do
-		if sg.kind == "next" then seg(prev, sg.spot); prev = sg.spot or prev
-		else seg(QA.origin, sg.spot) end
+		seg(sg.from == "origin" and QA.origin or sg.from, sg.spot)
 	end
 end
 
@@ -605,6 +613,7 @@ function QA.Show(questId, origin)
 	local Z = Mod("ZoneDB")
 	if not (Z and Z.GetUiMapIdByAreaId) then return end
 	local byspot, segments = {}, {}
+	local from = { [questId] = "origin" } -- quest -> the spot its follow-ons' lines start from
 	for _, e in ipairs(QA.Follow(questId)) do
 		local st = QA.Starter(e.id, origin and origin.area)
 		local map = st and st.area and Z:GetUiMapIdByAreaId(st.area)
@@ -620,11 +629,16 @@ function QA.Show(questId, origin)
 			end
 			table.insert(spot.entries, e)
 			local labels = {}
-			for _, pe in ipairs(spot.entries) do labels[#labels + 1] = pe.kind == "next" and tostring(pe.step) or "+" end
+			local seenStep = {}
+			for _, pe in ipairs(spot.entries) do
+				if not seenStep[pe.step] then seenStep[pe.step] = true; labels[#labels + 1] = tostring(pe.step) end
+			end
 			spot.label = table.concat(labels, ",")
 		end
-		segments[#segments + 1] = { kind = e.kind, spot = spot }
-		local label = e.kind == "next" and tostring(e.step) or "+"
+		local parentFrom = from[e.parent] or "origin"
+		if spot then segments[#segments + 1] = { from = parentFrom, spot = spot } end
+		from[e.id] = spot or parentFrom
+		local label = tostring(e.step)
 		for _, a in ipairs(QA.ObjectiveAreas(e.id)) do
 			a.label, a.entry = label, e
 			areaSpots[#areaSpots + 1] = a
