@@ -507,13 +507,16 @@ local function AreaOnEnter(f)
 	local a = f.area
 	if not a then return end
 	GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
-	local e = a.entry
-	GameTooltip:AddLine(e.step .. ". " .. Title(e.id), 1, 0.82, 0)
-	GameTooltip:AddLine("Where this quest's work is:", 0.8, 0.8, 0.8)
-	for _, t in ipairs(a.targets) do GameTooltip:AddLine("  " .. t, 1, 0.7, 0.35) end
-	local obj = Q(e.id, "objectivesText")
-	if type(obj) == "table" then
-		for _, l in ipairs(obj) do GameTooltip:AddLine(l, 1, 1, 1, true) end
+	for i, it in ipairs(a.entries) do
+		local e = it.entry
+		if i > 1 then GameTooltip:AddLine(" ") end
+		GameTooltip:AddLine(e.step .. ". " .. Title(e.id), 1, 0.82, 0)
+		GameTooltip:AddLine("Work here:", 0.8, 0.8, 0.8)
+		for _, t in ipairs(it.targets) do GameTooltip:AddLine("  " .. t, 1, 0.7, 0.35) end
+		local obj = Q(e.id, "objectivesText")
+		if type(obj) == "table" then
+			for _, l in ipairs(obj) do GameTooltip:AddLine(l, 1, 1, 1, true) end
+		end
 	end
 	GameTooltip:Show()
 end
@@ -638,10 +641,40 @@ function QA.Show(questId, origin)
 		local parentFrom = from[e.parent] or "origin"
 		if spot then segments[#segments + 1] = { from = parentFrom, spot = spot } end
 		from[e.id] = spot or parentFrom
-		local label = tostring(e.step)
-		for _, a in ipairs(QA.ObjectiveAreas(e.id)) do
-			a.label, a.entry = label, e
-			areaSpots[#areaSpots + 1] = a
+		-- steps whose work is in the same place share one marker ("1,2,3"), so none hides another
+		local found, mapsUsed = QA.ObjectiveAreas(e.id), {}
+		for _, a in ipairs(found) do
+			mapsUsed[#mapsUsed + 1] = tostring(a.map)
+			local hit
+			for _, b in ipairs(areaSpots) do
+				if b.map == a.map and math.abs(b.x - a.x) < QA.AREA_CELL and math.abs(b.y - a.y) < QA.AREA_CELL then hit = b; break end
+			end
+			if not hit then
+				hit = { map = a.map, x = a.x, y = a.y, count = 0, entries = {}, steps = {}, entry = e }
+				areaSpots[#areaSpots + 1] = hit
+			end
+			hit.count = hit.count + (a.count or 0)
+			local mine
+			for _, it in ipairs(hit.entries) do if it.entry == e then mine = it end end
+			if mine then
+				for _, t in ipairs(a.targets) do
+					local dup = false
+					for _, u in ipairs(mine.targets) do if u == t then dup = true end end
+					if not dup then mine.targets[#mine.targets + 1] = t end
+				end
+			else
+				hit.entries[#hit.entries + 1] = { entry = e, targets = a.targets }
+			end
+			hit.steps[e.step] = true
+			local st = {}
+			for k in pairs(hit.steps) do st[#st + 1] = k end
+			table.sort(st)
+			for i = 1, #st do st[i] = tostring(st[i]) end
+			hit.label = table.concat(st, ",")
+		end
+		if QA.debug then
+			Dbg("step " .. e.step .. ": " .. Title(e.id) .. " - " .. #found .. " work area(s)"
+				.. (#found > 0 and (" on map " .. table.concat(mapsUsed, ",")) or ""))
 		end
 	end
 	if #spots == 0 and #areaSpots == 0 then
