@@ -415,6 +415,13 @@ function QA.ObjectiveSources(questId)
 		local iname = ITEM(item, "name") or "the item"
 		for _, n in ipairs(ITEM(item, "npcDrops") or {}) do add("npc", n, "drops " .. iname) end
 		for _, n in ipairs(ITEM(item, "objectDrops") or {}) do add("object", n, iname) end
+		-- items that come out of another item (a crate, a bag): where that one comes from
+		for _, c in ipairs(ITEM(item, "itemDrops") or {}) do
+			local cname = ITEM(c, "name") or "a container"
+			local what = cname .. " (has " .. iname .. ")"
+			for _, n in ipairs(ITEM(c, "npcDrops") or {}) do add("npc", n, "drops " .. what) end
+			for _, n in ipairs(ITEM(c, "objectDrops") or {}) do add("object", n, what) end
+		end
 	end
 	for _, o in ipairs(type(ob[5]) == "table" and ob[5] or {}) do
 		for _, n in ipairs(type(o[1]) == "table" and o[1] or {}) do add("npc", n, "kill") end
@@ -868,6 +875,19 @@ function QA.Show(questId, origin)
 				Dbg("    objectives=" .. (type(ob) == "table" and (n(ob[1]) .. " npc/" .. n(ob[2]) .. " obj/" .. n(ob[3]) .. " item/" .. n(ob[5]) .. " credit") or "none")
 					.. " triggerEnd=" .. tostring(type(Q(e.id, "triggerEnd")) == "table") .. " extra=" .. n(Q(e.id, "extraObjectives"))
 					.. " hand-in=" .. (type(fin) == "table" and (n(fin[1]) .. " npc/" .. n(fin[2]) .. " obj") or "none"))
+				for _, o in ipairs(type(ob) == "table" and type(ob[3]) == "table" and ob[3] or {}) do
+					Dbg("    item " .. tostring(ITEM(o[1], "name") or o[1]) .. ": " .. n(ITEM(o[1], "npcDrops")) .. " creature/"
+						.. n(ITEM(o[1], "objectDrops")) .. " object/" .. n(ITEM(o[1], "itemDrops")) .. " container/"
+						.. n(ITEM(o[1], "vendors")) .. " vendor sources")
+				end
+				local sb = Q(e.id, "startedBy")
+				for _, id in ipairs(type(fin) == "table" and type(fin[1]) == "table" and fin[1] or {}) do
+					local sp, k = NPC(id, "spawns"), 0
+					for _ in pairs(type(sp) == "table" and sp or {}) do k = k + 1 end
+					Dbg("    hand in to " .. tostring(NPC(id, "name") or id)
+						.. ((type(sb) == "table" and Has(sb[1], id)) and " (the giver)" or " (not the giver)")
+						.. ", known in " .. k .. " zone(s)")
+				end
 			end
 		end
 	end
