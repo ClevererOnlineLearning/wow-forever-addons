@@ -208,6 +208,9 @@ function QA.AddTooltip(tt)
 	QA.AddSection(tt, TooltipQuests(tt), owner and owner.AreaID)
 end
 
+QA.TAIL_ANY = "Alt-click: show follow-ons on the map"
+QA.TAIL_NONE = "No follow-on quests"
+
 -- the "Leads to" lines for these quests, seen from area here
 function QA.AddSection(tt, list, here)
 	if #list == 0 then return end
@@ -227,11 +230,7 @@ function QA.AddSection(tt, list, here)
 			end
 		end
 	end
-	if any then
-		tt:AddLine("Alt-click: show follow-ons on the map", 0.55, 0.55, 0.55)
-	else
-		tt:AddLine("No follow-on quests", 0.55, 0.55, 0.55)
-	end
+	tt:AddLine(any and QA.TAIL_ANY or QA.TAIL_NONE, 0.55, 0.55, 0.55)
 end
 
 -- After Questie builds an icon's tooltip, add ours, and again whenever Questie rebuilds it (Shift)
@@ -299,13 +298,25 @@ function QA.FinisherSpot(questId, area)
 	end
 end
 
+-- is our section the tooltip's last line (still there)?
+local function HasOurs(tt)
+	local n = tt.NumLines and tt:NumLines() or 0
+	local name = tt.GetName and tt:GetName()
+	local fs = n > 0 and name and _G[name .. "TextLeft" .. n]
+	local t = fs and fs.GetText and fs:GetText()
+	return t == QA.TAIL_ANY or t == QA.TAIL_NONE
+end
+
 local adding
+-- The game redraws its quest markers' tooltips after showing them, which drops our lines, so this
+-- runs on every tooltip show and every frame while the map is open, and puts them back if missing.
 function QA.OnAnyTooltip(tt)
 	if adding or not (WorldMapFrame and WorldMapFrame:IsShown()) then return end
+	if not (tt and tt.IsShown and tt:IsShown()) then return end
 	local o = tt.GetOwner and tt:GetOwner()
 	if not o or o.data then return end -- Questie's own icons are handled by OnQuestieTooltip
 	local qid = QA.OwnerQuestId(o)
-	if not qid then return end
+	if not qid or HasOurs(tt) then return end
 	if not o.__qaHooked and o.HookScript then
 		o.__qaHooked = true
 		o:HookScript("OnMouseUp", QA.OnMarkerClick)
@@ -317,6 +328,8 @@ function QA.OnAnyTooltip(tt)
 	adding = false
 	QA.stats.shown = QA.stats.shown + 1
 end
+
+function QA.Watch() if GameTooltip then Safe(QA.OnAnyTooltip, GameTooltip) end end
 
 function QA.OnMarkerClick(o, button)
 	if button ~= "LeftButton" or not IsAltKeyDown() then return end
@@ -521,6 +534,11 @@ ev:SetScript("OnEvent", function()
 	hooksecurefunc(MIT, "ShowOnTooltip", QA.OnQuestieTooltip)
 	-- the game's own quest markers and quest list rows; debug: note every tooltip shown while the map is open
 	if GameTooltip and GameTooltip.HookScript then
+		hooksecurefunc(GameTooltip, "Show", QA.Watch)
+		if WorldMapFrame then
+			local watcher = CreateFrame("Frame", nil, WorldMapFrame) -- runs only while the map is open
+			watcher:SetScript("OnUpdate", QA.Watch)
+		end
 		GameTooltip:HookScript("OnShow", function(tt)
 			Safe(QA.OnAnyTooltip, tt)
 			if not QA.debug or not (WorldMapFrame and WorldMapFrame:IsShown()) then return end
