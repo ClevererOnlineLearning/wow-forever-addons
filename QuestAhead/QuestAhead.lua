@@ -11,6 +11,8 @@ _G.QuestAhead = QA
 
 QA.MAX_CHAIN = 6      -- how far down a chain to follow
 QA.MAX_QUESTS = 3     -- quests per tooltip that get a follow-on section
+QA.MAX_AREAS = 6      -- objective area markers per follow-on quest
+QA.AREA_CELL = 0.08   -- spawns closer than this (share of the map) make one area
 QA.stats = { hooked = false, hovers = 0, shown = 0, errors = 0 } -- for /qahead check
 local TAG = "|cff9b6bffQuestAhead|r: "
 
@@ -349,11 +351,80 @@ function QA.OnMarkerClick(o, button)
 	QA.Show(qid, origin)
 end
 
+-- Where a quest's work is (its objectives) ------------------------------------------------------
+
+-- { {kind = "npc"|"object", id, what = "kill"|"use"|"drops <item>"|"<item>"}, ... }
+function QA.ObjectiveSources(questId)
+	local out, seen = {}, {}
+	local function add(kind, id, what)
+		local key = kind .. ":" .. tostring(id)
+		if type(id) == "number" and not seen[key] then seen[key] = true; out[#out + 1] = { kind = kind, id = id, what = what } end
+	end
+	local ob = Q(questId, "objectives")
+	if type(ob) ~= "table" then return out end
+	for _, o in ipairs(type(ob[1]) == "table" and ob[1] or {}) do add("npc", o[1], "kill") end
+	for _, o in ipairs(type(ob[2]) == "table" and ob[2] or {}) do add("object", o[1], "use") end
+	for _, o in ipairs(type(ob[3]) == "table" and ob[3] or {}) do
+		local item = o[1]
+		local iname = ITEM(item, "name") or "the item"
+		for _, n in ipairs(ITEM(item, "npcDrops") or {}) do add("npc", n, "drops " .. iname) end
+		for _, n in ipairs(ITEM(item, "objectDrops") or {}) do add("object", n, iname) end
+	end
+	for _, o in ipairs(type(ob[5]) == "table" and ob[5] or {}) do
+		for _, n in ipairs(type(o[1]) == "table" and o[1] or {}) do add("npc", n, "kill") end
+	end
+	return out
+end
+
+-- spawns of a quest's targets, grouped into areas: { {map, x, y (0-1), count, targets = {"Name: kill"}}, ... }
+function QA.ObjectiveAreas(questId)
+	local Z = Mod("ZoneDB")
+	if not (Z and Z.GetUiMapIdByAreaId) then return {} end
+	local cells, list = {}, {}
+	for _, src in ipairs(QA.ObjectiveSources(questId)) do
+		local get = src.kind == "npc" and NPC or OBJ
+		local spawns = get(src.id, "spawns")
+		local label = (get(src.id, "name") or "?") .. ": " .. src.what
+		for area, pts in pairs(type(spawns) == "table" and spawns or {}) do
+			local map = Z:GetUiMapIdByAreaId(area)
+			for _, pt in ipairs(map and type(pts) == "table" and pts or {}) do
+				local x, y = pt[1], pt[2]
+				if type(x) == "number" and type(y) == "number" and x >= 0 and y >= 0 then
+					x, y = x / 100, y / 100
+					local key = map .. ":" .. math.floor(x / QA.AREA_CELL) .. ":" .. math.floor(y / QA.AREA_CELL)
+					local c = cells[key]
+					if not c then
+						c = { map = map, sx = 0, sy = 0, count = 0, targets = {}, has = {} }
+						cells[key] = c
+						list[#list + 1] = c
+					end
+					c.sx, c.sy, c.count = c.sx + x, c.sy + y, c.count + 1
+					if not c.has[label] then c.has[label] = true; c.targets[#c.targets + 1] = label end
+				end
+			end
+		end
+	end
+	for _, c in ipairs(list) do c.x, c.y = c.sx / c.count, c.sy / c.count end
+	table.sort(list, function(a, b)
+		if a.count ~= b.count then return a.count > b.count end
+		if a.map ~= b.map then return a.map < b.map end
+		if a.x ~= b.x then return a.x < b.x end
+		return a.y < b.y
+	end)
+	local out = {}
+	for i = 1, math.min(#list, QA.MAX_AREAS) do
+		local c = list[i]
+		out[i] = { map = c.map, x = c.x, y = c.y, count = c.count, targets = c.targets }
+	end
+	return out
+end
+
 -- Pins --------------------------------------------------------------------------------------------
 -- Our pins and lines live on our own layer over the map canvas, not in Questie's pin system, so
 -- Questie's own icon handling never meets them.
 
 local pool, spots, lines = {}, {}, {}
+local areaPool, areaSpots = {}, {}
 local layer
 
 local function Canvas() return WorldMapFrame and WorldMapFrame.GetCanvas and WorldMapFrame:GetCanvas() end
@@ -422,14 +493,59 @@ local function NewPin(parent)
 	return p
 end
 
+local function AreaOnEnter(f)
+	local a = f.area
+	if not a then return end
+	GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
+	local e = a.entry
+	GameTooltip:AddLine((e.kind == "next" and (e.step .. ". ") or "+ ") .. Title(e.id), 1, 0.82, 0)
+	GameTooltip:AddLine("Where this quest's work is:", 0.8, 0.8, 0.8)
+	for _, t in ipairs(a.targets) do GameTooltip:AddLine("  " .. t, 1, 0.7, 0.35) end
+	local obj = Q(e.id, "objectivesText")
+	if type(obj) == "table" then
+		for _, l in ipairs(obj) do GameTooltip:AddLine(l, 1, 1, 1, true) end
+	end
+	GameTooltip:Show()
+end
+
+local function NewArea(parent)
+	local f = CreateFrame("Frame", nil, parent)
+	f:SetSize(18, 18)
+	f.bg = f:CreateTexture(nil, "BORDER")
+	f.bg:SetAllPoints()
+	f.bg:SetTexture("Interface\CHARACTERFRAME\TempPortraitAlphaMask")
+	f.bg:SetVertexColor(1, 0.6, 0.2, 0.5)
+	f.label = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	f.label:SetPoint("CENTER", 0, 0)
+	f:EnableMouse(true)
+	f:SetScript("OnEnter", AreaOnEnter)
+	f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	return f
+end
+
+-- the objective areas now placed: { map, x, y (0-1), label, entry, targets, frame? }
+function QA.AreaSpots() return areaSpots end
+
 -- place pins and lines for the map being shown
 function QA.Redraw()
 	for _, l in ipairs(lines) do l:Hide() end
 	for _, s in ipairs(spots) do if s.frame then s.frame:Hide() end end
+	for _, a in ipairs(areaSpots) do if a.frame then a.frame:Hide() end end
 	if not QA.shownFor then return end
 	local lay, canvas = Layer()
 	if not lay then return end
 	local w, h = canvas:GetWidth() or 0, canvas:GetHeight() or 0
+	for _, a in ipairs(areaSpots) do
+		local x, y = ShownMapPoint(a.map, a.x, a.y)
+		if x then
+			a.frame = a.frame or table.remove(areaPool) or NewArea(lay)
+			a.frame.area = a
+			a.frame.label:SetText(a.label)
+			a.frame:ClearAllPoints()
+			a.frame:SetPoint("CENTER", canvas, "TOPLEFT", x * w, -y * h)
+			a.frame:Show()
+		end
+	end
 	for _, s in ipairs(spots) do
 		local x, y = ShownMapPoint(s.map, s.x, s.y)
 		if x then
@@ -472,6 +588,10 @@ function QA.Clear()
 		if s.frame then s.frame:Hide(); s.frame.spot = nil; pool[#pool + 1] = s.frame end
 	end
 	spots = {}
+	for _, a in ipairs(areaSpots) do
+		if a.frame then a.frame:Hide(); a.frame.area = nil; areaPool[#areaPool + 1] = a.frame end
+	end
+	areaSpots = {}
 	QA.shownFor, QA.origin, QA.segments = nil, nil, nil
 	for _, l in ipairs(lines) do l:Hide() end
 end
@@ -504,8 +624,13 @@ function QA.Show(questId, origin)
 			spot.label = table.concat(labels, ",")
 		end
 		segments[#segments + 1] = { kind = e.kind, spot = spot }
+		local label = e.kind == "next" and tostring(e.step) or "+"
+		for _, a in ipairs(QA.ObjectiveAreas(e.id)) do
+			a.label, a.entry = label, e
+			areaSpots[#areaSpots + 1] = a
+		end
 	end
-	if #spots == 0 then
+	if #spots == 0 and #areaSpots == 0 then
 		print("|cff9b6bffQuestAhead|r: no map spot known for what " .. (Q(questId, "name") or "that quest") .. " leads to.")
 		return
 	end
