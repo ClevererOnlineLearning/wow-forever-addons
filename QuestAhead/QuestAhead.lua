@@ -13,6 +13,7 @@ _G.QuestAhead = QA
 QA.MAX_CHAIN = 6      -- how many steps down a chain to follow
 QA.MAX_FOLLOW = 12    -- most follow-on quests shown for one quest
 QA.MAX_QUESTS = 3     -- quests per tooltip that get a follow-on section
+QA.MAX_READD = 20     -- times our lines are put back on one tooltip owner
 QA.MAX_AREAS = 6      -- objective area markers per follow-on quest
 QA.AREA_CELL = 0.08   -- spawns closer than this (share of the map) make one area
 QA.stats = { hooked = false, hovers = 0, shown = 0, errors = 0 } -- for /qahead check
@@ -311,12 +312,30 @@ function QA.FinisherSpot(questId, area)
 end
 
 -- is our section the tooltip's last line (still there)?
+local function LineText(tt, i)
+	local name = tt.GetName and tt:GetName()
+	local fs = name and _G[name .. "TextLeft" .. i]
+	local t = fs and fs.GetText and fs:GetText()
+	return type(t) == "string" and t or nil
+end
+
+-- are our lines anywhere in the tooltip? (other add-ons may add lines after ours)
 local function HasOurs(tt)
 	local n = tt.NumLines and tt:NumLines() or 0
-	local name = tt.GetName and tt:GetName()
-	local fs = n > 0 and name and _G[name .. "TextLeft" .. n]
-	local t = fs and fs.GetText and fs:GetText()
-	return t == QA.TAIL_ANY or t == QA.TAIL_NONE
+	for i = 1, n do
+		local t = LineText(tt, i)
+		if t == QA.TAIL_ANY or t == QA.TAIL_NONE then return true end
+	end
+	return false
+end
+
+-- is this the quest's own tooltip (its first line names the quest), not e.g. a reward item's?
+local function IsQuestTooltip(tt, qid)
+	local name = Q(qid, "name")
+	local first = LineText(tt, 1)
+	if type(name) ~= "string" or not first then return false end
+	first = first:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+	return first:find(name, 1, true) ~= nil
 end
 
 local adding
@@ -328,11 +347,15 @@ function QA.OnAnyTooltip(tt)
 	local o = tt.GetOwner and tt:GetOwner()
 	if not o or o.data then return end -- Questie's own icons are handled by OnQuestieTooltip
 	local qid = QA.OwnerQuestId(o)
-	if not qid or HasOurs(tt) then return end
+	if not qid or HasOurs(tt) or not IsQuestTooltip(tt, qid) then return end
 	if not o.__qaHooked and o.HookScript then
 		o.__qaHooked = true
 		o:HookScript("OnMouseUp", QA.OnMarkerClick)
 	end
+	-- a tooltip the game keeps wiping gets our lines back only so many times (never a runaway)
+	if tt.__qaOwner ~= o then tt.__qaOwner, tt.__qaAdds = o, 0 end
+	if tt.__qaAdds >= QA.MAX_READD then return end
+	tt.__qaAdds = tt.__qaAdds + 1
 	local _, here = ShownArea()
 	adding = true
 	Safe(QA.AddSection, tt, { qid }, here)
@@ -708,6 +731,7 @@ ev:SetScript("OnEvent", function()
 	-- the game's own quest markers and quest list rows; debug: note every tooltip shown while the map is open
 	if GameTooltip and GameTooltip.HookScript then
 		hooksecurefunc(GameTooltip, "Show", QA.Watch)
+		GameTooltip:HookScript("OnHide", function(t) t.__qaOwner, t.__qaAdds = nil, 0 end)
 		if WorldMapFrame then
 			local watcher = CreateFrame("Frame", nil, WorldMapFrame) -- runs only while the map is open
 			watcher:SetScript("OnUpdate", QA.Watch)
