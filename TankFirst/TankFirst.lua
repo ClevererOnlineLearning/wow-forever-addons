@@ -179,11 +179,57 @@ local function VisibleRows(browse)
 	return rows
 end
 
+------------------------------------------------------------------------
+-- Double-click a solo player's row to invite them (/tanks invite turns it off)
+------------------------------------------------------------------------
+local lastInvite = {} -- name -> time, so a second double-click doesn't invite twice
+
+function TF.InviteFromRow(row)
+	if not (db and db.enabled and db.invite) then return false end
+	local id = RowId(row)
+	if not id or not C_LFGList then return false end
+	local info = Call(C_LFGList.GetSearchResultInfo, id)
+	local members = type(info) == "table" and Plain(info.numMembers) or 1
+	if members and members > 1 then
+		Say("that's a group of " .. members .. ": ask to join it, or whisper its leader.")
+		return false
+	end
+	local leader = Call(C_LFGList.GetSearchResultLeaderInfo, id)
+	local name = type(leader) == "table" and Plain(leader.name) or nil
+	if type(name) ~= "string" or name == "" then
+		Say("can't read that player's name right now.")
+		return false
+	end
+	if Plain(Call(IsInGroup)) and not Plain(Call(UnitIsGroupLeader, "player")) then
+		Say("only your group's leader can invite.")
+		return false
+	end
+	local now = Plain(Call(GetTime)) or 0
+	if lastInvite[name] and now - lastInvite[name] < 5 then return false end
+	lastInvite[name] = now
+	local invite = (C_PartyInfo and C_PartyInfo.InviteUnit) or InviteUnit
+	if type(invite) ~= "function" then return false end
+	local ok = pcall(invite, name)
+	if not ok then Say("the game wouldn't send that invite.") return false end
+	local kind = TF.Mark(id, { tank = true, healer = true })
+	Say("invited " .. name .. (kind and (" (" .. (kind == "tank" and "Tank" or "Healer") .. ")") or "") .. ".")
+	return true
+end
+
+local function HookRow(row)
+	if row.tfInviteHooked or not row.HookScript then return end
+	row.tfInviteHooked = true
+	pcall(row.HookScript, row, "OnDoubleClick", function(self, button)
+		if button == nil or button == "LeftButton" then TF.InviteFromRow(self) end
+	end)
+end
+
 function TF.DecorateAll()
 	local browse = _G.LFGBrowseFrame
 	if not (browse and db) then return 0 end
 	local n, need = 0, TF.Needs()
 	for _, row in ipairs(VisibleRows(browse)) do
+		HookRow(row)
 		local id = row:IsShown() and RowId(row) or nil
 		if id then
 			local kind, lvl = TF.Mark(id, need)
@@ -263,6 +309,7 @@ ev:SetScript("OnEvent", function(_, e, name)
 		if db.sort == nil then db.sort = true end
 		if db.highlight == nil then db.highlight = true end
 		if db.healers == nil then db.healers = true end
+		if db.invite == nil then db.invite = true end
 		TF.db = db
 	end
 	if db then TF.Hook() end -- the Group Finder may load later, as its own Blizzard add-on
@@ -285,6 +332,9 @@ SlashCmdList.TANKFIRST = function(msg)
 		db.healers = not db.healers
 		TF.DecorateAll()
 		Say("healers (green, after tanks, while your group has no healer): " .. OnOff(db.healers))
+	elseif msg == "invite" then
+		db.invite = not db.invite
+		Say("double-click a player to invite them: " .. OnOff(db.invite))
 	elseif msg == "glow" or msg == "highlight" then
 		db.highlight = not db.highlight
 		TF.DecorateAll()
@@ -317,6 +367,6 @@ SlashCmdList.TANKFIRST = function(msg)
 		db.lastCheck = r
 	else
 		Say(("is %s. Tanks to the top: %s, glow: %s, healers: %s. Each only while your group still needs one."):format(OnOff(db.enabled), OnOff(db.sort), OnOff(db.highlight), OnOff(db.healers)))
-		Say("|cffffffff/tanks sort|r  top on/off   |cffffffff/tanks glow|r  glow on/off   |cffffffff/tanks healers|r  healers on/off   |cffffffff/tanks off|r / |cffffffffon|r   |cffffffff/tanks check|r  what it can see")
+		Say("|cffffffff/tanks sort|r  top on/off   |cffffffff/tanks glow|r  glow on/off   |cffffffff/tanks healers|r  healers on/off   |cffffffff/tanks invite|r  double-click invite on/off   |cffffffff/tanks off|r / |cffffffffon|r   |cffffffff/tanks check|r  what it can see")
 	end
 end
