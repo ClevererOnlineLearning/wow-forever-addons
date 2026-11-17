@@ -1,5 +1,5 @@
 -- QuestAhead: on Questie's world map icons, see what a quest leads to and where.
--- Hover a quest's icon: its follow-on quests and where each one starts.
+-- Hover a quest's "!" or "?" icon: its follow-on quests and where each one starts.
 -- Alt-click it: pins at the follow-on quest givers (numbered in chain order), joined by lines.
 -- Hover a pin for that quest's details; Alt-click a pin to look one step further.
 -- Reads Questie's quest data through Questie's own modules; changes nothing in Questie.
@@ -171,13 +171,19 @@ end
 
 -- Map tooltip -------------------------------------------------------------------------------------
 
+-- only a quest's own icons (pick-up "!" and hand-in "?"), not its objective markers
+function QA.IsQuestIcon(icon)
+	local t = icon and icon.data and icon.data.Type
+	return t == "available" or t == "complete"
+end
+
 local function TooltipQuests(tt)
 	local set, list = {}, {}
 	local function add(id) if type(id) == "number" and not set[id] then set[id] = true; list[#list + 1] = id end end
 	local owner = tt._owner
-	if owner and owner.data then add(owner.data.Id) end
+	if not QA.IsQuestIcon(owner) then return list end
+	add(owner.data.Id)
 	local rest = {}
-	for id in pairs(type(tt.questOrder) == "table" and tt.questOrder or {}) do rest[#rest + 1] = id end
 	for _, quests in pairs(type(tt.npcAndObjectOrder) == "table" and tt.npcAndObjectOrder or {}) do
 		for _, qd in pairs(quests) do if type(qd) == "table" then rest[#rest + 1] = qd.questId end end
 	end
@@ -401,7 +407,7 @@ end
 
 function QA.OnIconClick(icon, button)
 	if button ~= "LeftButton" or not IsAltKeyDown() then return end
-	if icon.miniMapIcon or not icon.data or type(icon.data.Id) ~= "number" then return end
+	if icon.miniMapIcon or not QA.IsQuestIcon(icon) or type(icon.data.Id) ~= "number" then return end
 	local id = icon.data.Id
 	if QA.shownFor == id then QA.Clear(); return end
 	QA.Show(id, { map = icon.UiMapID, x = (icon.x or 0) / 100, y = (icon.y or 0) / 100, area = icon.AreaID })
@@ -419,7 +425,7 @@ ev:SetScript("OnEvent", function()
 	end
 	hooksecurefunc(MIT, "ShowOnTooltip", QA.OnQuestieTooltip)
 	QA.stats.hooked = true
-	print(TAG .. "on. Hover a quest's icon on the world map to see what it leads to; Alt-click it to pin them. /qahead")
+	print(TAG .. "on. Hover a quest's ! or ? on the world map to see what it leads to; Alt-click it to pin them. /qahead")
 	if WorldMapFrame then
 		WorldMapFrame:HookScript("OnHide", QA.Clear)
 		if type(WorldMapFrame.OnMapChanged) == "function" then hooksecurefunc(WorldMapFrame, "OnMapChanged", QA.Redraw) end
@@ -448,7 +454,7 @@ SlashCmdList.QUESTAHEAD = function(msg)
 	msg = (msg or ""):lower()
 	if msg == "clear" then QA.Clear(); return end
 	if msg == "check" then QA.Check(); return end
-	print("|cff9b6bffQuestAhead|r: hover a quest's icon on the world map to see what it leads to and where. "
+	print("|cff9b6bffQuestAhead|r: hover a quest's ! (pick-up) or ? (hand-in) icon on the world map to see what it leads to and where. "
 		.. "Alt-click the icon to pin the follow-on givers; hover a pin for details, Alt-click a pin to look further. "
 		.. "/qahead clear removes the pins. /qahead check if nothing happens.")
 end
