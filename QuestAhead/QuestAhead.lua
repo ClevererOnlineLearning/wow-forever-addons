@@ -394,7 +394,7 @@ function QA.ObjectiveSources(questId)
 		if type(id) == "number" and not seen[key] then seen[key] = true; out[#out + 1] = { kind = kind, id = id, what = what } end
 	end
 	local ob = Q(questId, "objectives")
-	if type(ob) ~= "table" then return out end
+	if type(ob) ~= "table" then ob = {} end
 	for _, o in ipairs(type(ob[1]) == "table" and ob[1] or {}) do add("npc", o[1], "kill") end
 	for _, o in ipairs(type(ob[2]) == "table" and ob[2] or {}) do add("object", o[1], "use") end
 	for _, o in ipairs(type(ob[3]) == "table" and ob[3] or {}) do
@@ -406,7 +406,56 @@ function QA.ObjectiveSources(questId)
 	for _, o in ipairs(type(ob[5]) == "table" and ob[5] or {}) do
 		for _, n in ipairs(type(o[1]) == "table" and o[1] or {}) do add("npc", n, "kill") end
 	end
+	for _, o in ipairs(type(Q(questId, "extraObjectives")) == "table" and Q(questId, "extraObjectives") or {}) do
+		local what = type(o[3]) == "string" and o[3] or "objective"
+		for _, ref in ipairs(type(o[5]) == "table" and o[5] or {}) do
+			local kind, id = ref[1], ref[2]
+			if kind == "monster" then add("npc", id, what)
+			elseif kind == "object" then add("object", id, what)
+			elseif kind == "item" then
+				local iname = ITEM(id, "name") or "the item"
+				for _, n in ipairs(ITEM(id, "npcDrops") or {}) do add("npc", n, "drops " .. iname) end
+				for _, n in ipairs(ITEM(id, "objectDrops") or {}) do add("object", n, iname) end
+			end
+		end
+	end
 	return out
+end
+
+-- every set of spots where a quest's work is: { {label, spawns = {[area] = {{x, y}, ...}}}, ... }
+function QA.WorkSpawns(questId)
+	local groups = {}
+	for _, src in ipairs(QA.ObjectiveSources(questId)) do
+		local get = src.kind == "npc" and NPC or OBJ
+		groups[#groups + 1] = { label = (get(src.id, "name") or "?") .. ": " .. src.what, spawns = get(src.id, "spawns") }
+	end
+	local te = Q(questId, "triggerEnd") -- "go to this place"
+	if type(te) == "table" and type(te[2]) == "table" then
+		groups[#groups + 1] = { label = "Go to: " .. tostring(te[1] or "the spot"), spawns = te[2] }
+	end
+	local extra = Q(questId, "extraObjectives")
+	for _, o in ipairs(type(extra) == "table" and extra or {}) do
+		if type(o[1]) == "table" then
+			groups[#groups + 1] = { label = type(o[3]) == "string" and o[3] or "objective", spawns = o[1] }
+		end
+	end
+	return groups
+end
+
+-- where it's handed in, unless that's the NPC/object who gives it (the pin is already there)
+function QA.HandInSpawns(questId)
+	local fin, sb = Q(questId, "finishedBy"), Q(questId, "startedBy")
+	if type(fin) ~= "table" then return {} end
+	sb = type(sb) == "table" and sb or {}
+	local groups = {}
+	for i, get in ipairs({ NPC, OBJ }) do
+		for _, id in ipairs(type(fin[i]) == "table" and fin[i] or {}) do
+			if not Has(sb[i], id) then
+				groups[#groups + 1] = { label = "Hand in to " .. (get(id, "name") or "?"), spawns = get(id, "spawns") }
+			end
+		end
+	end
+	return groups
 end
 
 -- spawns of a quest's targets, grouped into areas: { {map, x, y (0-1), count, targets = {"Name: kill"}}, ... }
@@ -414,10 +463,18 @@ function QA.ObjectiveAreas(questId)
 	local Z = Mod("ZoneDB")
 	if not (Z and Z.GetUiMapIdByAreaId) then return {} end
 	local cells, list = {}, {}
-	for _, src in ipairs(QA.ObjectiveSources(questId)) do
-		local get = src.kind == "npc" and NPC or OBJ
-		local spawns = get(src.id, "spawns")
-		local label = (get(src.id, "name") or "?") .. ": " .. src.what
+	local groups = QA.WorkSpawns(questId)
+	local function HasSpot(gs)
+		for _, g in ipairs(gs) do
+			for area, pts in pairs(type(g.spawns) == "table" and g.spawns or {}) do
+				if Z:GetUiMapIdByAreaId(area) and type(pts) == "table" and pts[1] then return true end
+			end
+		end
+	end
+	-- nothing to kill, use or find (a delivery or talk-to quest): mark where it's handed in
+	if not HasSpot(groups) then groups = QA.HandInSpawns(questId) end
+	for _, grp in ipairs(groups) do
+		local spawns, label = grp.spawns, grp.label
 		for area, pts in pairs(type(spawns) == "table" and spawns or {}) do
 			local map = Z:GetUiMapIdByAreaId(area)
 			for _, pt in ipairs(map and type(pts) == "table" and pts or {}) do
@@ -698,6 +755,13 @@ function QA.Show(questId, origin)
 		if QA.debug then
 			Dbg("step " .. e.step .. ": " .. Title(e.id) .. " - " .. #found .. " work area(s)"
 				.. (#found > 0 and (" on map " .. table.concat(mapsUsed, ",")) or ""))
+			if #found == 0 then
+				local ob, fin = Q(e.id, "objectives"), Q(e.id, "finishedBy")
+				local function n(t) return type(t) == "table" and #t or 0 end
+				Dbg("    objectives=" .. (type(ob) == "table" and (n(ob[1]) .. " npc/" .. n(ob[2]) .. " obj/" .. n(ob[3]) .. " item/" .. n(ob[5]) .. " credit") or "none")
+					.. " triggerEnd=" .. tostring(type(Q(e.id, "triggerEnd")) == "table") .. " extra=" .. n(Q(e.id, "extraObjectives"))
+					.. " hand-in=" .. (type(fin) == "table" and (n(fin[1]) .. " npc/" .. n(fin[2]) .. " obj") or "none"))
+			end
 		end
 	end
 	if #spots == 0 and #areaSpots == 0 then
