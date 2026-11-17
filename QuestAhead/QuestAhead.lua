@@ -205,8 +205,11 @@ end
 
 function QA.AddTooltip(tt)
 	local owner = tt._owner
-	local here = owner and owner.AreaID
-	local list = TooltipQuests(tt)
+	QA.AddSection(tt, TooltipQuests(tt), owner and owner.AreaID)
+end
+
+-- the "Leads to" lines for these quests, seen from area here
+function QA.AddSection(tt, list, here)
 	if #list == 0 then return end
 	tt:AddLine(" ")
 	local any = false
@@ -262,6 +265,75 @@ function QA.OnQuestieTooltip(icon, tt)
 			.. (before and (", lines " .. before .. " -> " .. tostring(tt:NumLines())) or ""))
 	end
 	tt:Show()
+end
+
+-- The game's own quest markers on the map, and the map's quest list ------------------------------
+
+local function ShownArea()
+	local Z = Mod("ZoneDB")
+	local map = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
+	return map, (map and Z and Z.GetAreaIdByUiMapId and Z:GetAreaIdByUiMapId(map)) or nil
+end
+
+-- the quest a frame stands for (a map quest marker, a quest list row), or nil
+function QA.OwnerQuestId(o)
+	if type(o) ~= "table" then return nil end
+	local id = o.questID or o.questId or (type(o.info) == "table" and o.info.questID)
+	if type(id) == "number" and id > 0 then return id end
+	local idx = o.questLogIndex
+	if type(idx) == "number" and C_QuestLog and C_QuestLog.GetInfo then
+		local ok, info = pcall(C_QuestLog.GetInfo, idx)
+		if ok and type(info) == "table" and type(info.questID) == "number" and info.questID > 0 then return info.questID end
+	end
+end
+
+-- where a quest is handed in, in this area if it can be (for lines from a quest list row)
+function QA.FinisherSpot(questId, area)
+	local fin = Q(questId, "finishedBy")
+	if type(fin) ~= "table" then return nil end
+	for _, src in ipairs({ { fin[1], NPC }, { fin[2], OBJ } }) do
+		for _, eid in ipairs(src[1] or {}) do
+			local a, pt = FirstSpot(src[2](eid, "spawns"), area)
+			if a then return a, pt[1], pt[2] end
+		end
+	end
+end
+
+local adding
+function QA.OnAnyTooltip(tt)
+	if adding or not (WorldMapFrame and WorldMapFrame:IsShown()) then return end
+	local o = tt.GetOwner and tt:GetOwner()
+	if not o or o.data then return end -- Questie's own icons are handled by OnQuestieTooltip
+	local qid = QA.OwnerQuestId(o)
+	if not qid then return end
+	if not o.__qaHooked and o.HookScript then
+		o.__qaHooked = true
+		o:HookScript("OnMouseUp", QA.OnMarkerClick)
+	end
+	local _, here = ShownArea()
+	adding = true
+	Safe(QA.AddSection, tt, { qid }, here)
+	tt:Show()
+	adding = false
+	QA.stats.shown = QA.stats.shown + 1
+end
+
+function QA.OnMarkerClick(o, button)
+	if button ~= "LeftButton" or not IsAltKeyDown() then return end
+	local qid = QA.OwnerQuestId(o)
+	if not qid then return end
+	if QA.shownFor == qid then QA.Clear(); return end
+	local map, here = ShownArea()
+	local origin
+	if type(o.normalizedX) == "number" and type(o.normalizedY) == "number" then
+		origin = { map = map, x = o.normalizedX, y = o.normalizedY, area = here }
+	else
+		local a, x, y = QA.FinisherSpot(qid, here)
+		local Z = Mod("ZoneDB")
+		local m = a and Z and Z.GetUiMapIdByAreaId and Z:GetUiMapIdByAreaId(a)
+		origin = m and { map = m, x = x / 100, y = y / 100, area = a } or { area = here }
+	end
+	QA.Show(qid, origin)
 end
 
 -- Pins --------------------------------------------------------------------------------------------
@@ -447,14 +519,16 @@ ev:SetScript("OnEvent", function()
 		return
 	end
 	hooksecurefunc(MIT, "ShowOnTooltip", QA.OnQuestieTooltip)
-	-- debug: note every tooltip shown while the map is open, whoever owns it
+	-- the game's own quest markers and quest list rows; debug: note every tooltip shown while the map is open
 	if GameTooltip and GameTooltip.HookScript then
 		GameTooltip:HookScript("OnShow", function(tt)
+			Safe(QA.OnAnyTooltip, tt)
 			if not QA.debug or not (WorldMapFrame and WorldMapFrame:IsShown()) then return end
 			local o = tt.GetOwner and tt:GetOwner()
 			local name = o and ((o.GetDebugName and o:GetDebugName()) or (o.GetName and o:GetName())) or "?"
 			local first = _G.GameTooltipTextLeft1 and _G.GameTooltipTextLeft1:GetText()
 			Dbg("tooltip: owner=" .. tostring(name) .. " questie=" .. tostring(o and o.data ~= nil)
+				.. " quest=" .. tostring(QA.OwnerQuestId(o))
 				.. " first line=" .. tostring(first))
 		end)
 	end
