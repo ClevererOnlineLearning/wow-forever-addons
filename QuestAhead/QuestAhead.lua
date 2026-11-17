@@ -19,6 +19,19 @@ QA.AREA_CELL = 0.08   -- spawns closer than this (share of the map) make one are
 QA.stats = { hooked = false, hovers = 0, shown = 0, errors = 0 } -- for /qahead check
 local TAG = "|cff9b6bffQuestAhead|r: "
 
+-- a colour per step: orange, green, blue, pink, yellow, red (then round again)
+QA.STEP_COLORS = {
+	{ 1, 0.6, 0.2 }, { 0.3, 0.9, 0.3 }, { 0.25, 0.7, 1 }, { 1, 0.4, 0.75 }, { 1, 0.9, 0.2 }, { 1, 0.3, 0.25 },
+}
+function QA.StepColor(step)
+	local c = QA.STEP_COLORS[((step or 1) - 1) % #QA.STEP_COLORS + 1]
+	return c[1], c[2], c[3]
+end
+function QA.StepText(step, text)
+	local r, g, b = QA.StepColor(step)
+	return string.format("|cff%02x%02x%02x%s|r", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255), text or tostring(step))
+end
+
 -- debug lines go to chat and to QuestAheadDB.log (kept across /reload, for reading outside the game)
 local function Dbg(msg)
 	print(TAG .. msg)
@@ -236,7 +249,7 @@ function QA.AddSection(tt, list, here)
 			any = true
 			tt:AddLine("Leads to (after " .. (Q(qid, "name") or qid) .. "):", 1, 0.82, 0)
 			for _, e in ipairs(f) do
-				local left = "  " .. string.rep("  ", e.step - 1) .. e.step .. ". " .. Title(e.id)
+				local left = "  " .. string.rep("  ", e.step - 1) .. QA.StepText(e.step, e.step .. ".") .. " " .. Title(e.id)
 				if e.group then left = left .. " |cff999999(needs other quests too)|r" end
 				local w, r, g, b = QA.Where(e.id, qid, here)
 				tt:AddDoubleLine(left, w, 1, 1, 1, r, g, b)
@@ -547,7 +560,7 @@ local function PinOnEnter(pin)
 	GameTooltip:SetOwner(pin, "ANCHOR_RIGHT")
 	for i, e in ipairs(spot.entries) do
 		if i > 1 then GameTooltip:AddLine(" ") end
-		GameTooltip:AddLine(e.step .. ". " .. Title(e.id), 1, 0.82, 0)
+		GameTooltip:AddLine(QA.StepText(e.step, e.step .. ".") .. " " .. Title(e.id), 1, 0.82, 0)
 		GameTooltip:AddLine("Given by " .. (spot.starter.name or "?") .. " (" .. QA.ZoneName(spot.starter.area) .. ")", 0.8, 0.8, 0.8)
 		if e.group then GameTooltip:AddLine("Needs other quests done too", 1, 0.5, 0.3) end
 		local obj = Q(e.id, "objectivesText")
@@ -590,7 +603,7 @@ local function AreaOnEnter(f)
 	for i, it in ipairs(a.entries) do
 		local e = it.entry
 		if i > 1 then GameTooltip:AddLine(" ") end
-		GameTooltip:AddLine(e.step .. ". " .. Title(e.id), 1, 0.82, 0)
+		GameTooltip:AddLine(QA.StepText(e.step, e.step .. ".") .. " " .. Title(e.id), 1, 0.82, 0)
 		GameTooltip:AddLine("Work here:", 0.8, 0.8, 0.8)
 		for _, t in ipairs(it.targets) do GameTooltip:AddLine("  " .. t, 1, 0.7, 0.35) end
 		local obj = Q(e.id, "objectivesText")
@@ -634,6 +647,8 @@ function QA.Redraw()
 			a.frame = a.frame or table.remove(areaPool) or NewArea(lay)
 			a.frame.area = a
 			a.frame.label:SetText(a.label)
+			local r, g, b = QA.StepColor(a.minStep or 1)
+			a.frame.bg:SetVertexColor(r, g, b, 0.55)
 			a.frame:ClearAllPoints()
 			a.frame:SetPoint("CENTER", canvas, "TOPLEFT", x * w, -y * h)
 			a.frame:Show()
@@ -644,7 +659,7 @@ function QA.Redraw()
 		if x then
 			s.frame = s.frame or table.remove(pool) or NewPin(lay)
 			s.frame.spot = s
-			s.frame.label:SetText(s.label)
+			s.frame.label:SetText(s.colored or s.label)
 			s.frame:ClearAllPoints()
 			s.frame:SetPoint("CENTER", canvas, "TOPLEFT", x * w, -y * h)
 			s.frame:Show()
@@ -712,11 +727,16 @@ function QA.Show(questId, origin)
 			end
 			table.insert(spot.entries, e)
 			local labels = {}
-			local seenStep = {}
+			local seenStep, colored = {}, {}
 			for _, pe in ipairs(spot.entries) do
-				if not seenStep[pe.step] then seenStep[pe.step] = true; labels[#labels + 1] = tostring(pe.step) end
+				if not seenStep[pe.step] then
+					seenStep[pe.step] = true
+					labels[#labels + 1] = tostring(pe.step)
+					colored[#colored + 1] = QA.StepText(pe.step)
+				end
 			end
 			spot.label = table.concat(labels, ",")
+			spot.colored = table.concat(colored, ",")
 		end
 		local parentFrom = from[e.parent] or "origin"
 		if spot then segments[#segments + 1] = { from = parentFrom, spot = spot } end
@@ -749,6 +769,7 @@ function QA.Show(questId, origin)
 			local st = {}
 			for k in pairs(hit.steps) do st[#st + 1] = k end
 			table.sort(st)
+			hit.minStep = st[1]
 			for i = 1, #st do st[i] = tostring(st[i]) end
 			hit.label = table.concat(st, ",")
 		end
