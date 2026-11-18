@@ -3,7 +3,7 @@
 ## Notes: Press one key to find a mob near you. Type a name, pick a key, done. /tfinder
 ## Version: 3.10
 ## Author: good mens (Mephz on WoW Forever)
-## X-License: MIT (keep the credit when sharing)
+## X-License: All Rights Reserved (free to use; changes for your own use are fine; please don't re-upload)
 ## OptionalDeps: Questie, QuestieDB
 ## SavedVariables: TargetFinderMinimapDB
 ## SavedVariablesPerCharacter: TargetFinderDB

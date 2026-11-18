@@ -1,24 +1,26 @@
-MIT License
+TargetFinder - Copyright (c) 2026 good mens (Mephz on WoW Forever). All rights reserved.
 
-Copyright (c) 2026 good mens (Mephz on WoW Forever)
+This licence applies to versions released from 18 November 2026 onward. Earlier versions were released
+under the MIT licence, and copies of those versions keep it.
 
-This licence covers the add-ons written by good mens: TargetFinder, UIFade, ThreatTint,
-PetWarn, Hunter Reminder and the GunSilencer code. It does NOT cover SLoTe (Scrolling Loot Text, by its original
-CurseForge author; only the Forever port changes are ours), the GunSilencer sound files (from the
-Gun Silencer M4A1 sound mod, which belong to their author), or bundled libraries (Ace3, LibStub,
-CallbackHandler, HereBeDragons, LibSharedMedia, LibDataBroker, LibDeformat), which keep their own licences.
+YOU MAY, free of charge:
+  - download, install and use TargetFinder;
+  - change its files for your own personal use;
+  - link to its official page (https://www.curseforge.com/projects/1799800) and talk about it, review it,
+    or show it in videos and streams.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
-following conditions:
+YOU MAY NOT, without the author's written permission:
+  - re-upload or share TargetFinder, or a changed version of it, anywhere (CurseForge, Wago, WoWInterface,
+    GitHub, Discord, websites or anywhere else);
+  - copy its code into another add-on or program that you share;
+  - sell it or a changed version, or ask for payment or donations for it.
 
-The above copyright notice and this permission notice shall be included in all copies or substantial
-portions of the Software.
+To ask for permission, message the author through the add-on's CurseForge page.
+
+Bundled libraries - HereBeDragons, LibStub and CallbackHandler (in the Libs folder) - are not covered by this licence and keep their own.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
 LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
-EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
+EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.

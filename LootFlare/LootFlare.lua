@@ -1,7 +1,7 @@
 -- Loot Flare: what you loot appears as a short, tidy stack of lines mid-screen.
 -- Good drops get a rarity glow, a shine sweep and a sound of their own; quest items are
 -- marked and show your quest progress.
--- Written from scratch by good mens (Mephz on WoW Forever). MIT licence.
+-- Written from scratch by good mens (Mephz on WoW Forever). All rights reserved; see LICENSE.txt.
 
 local LF = {}
 _G.LootFlare = LF

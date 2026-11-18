@@ -3,7 +3,7 @@
 ## Notes: Shows "Pet not attacking" when you're in a fight and your pet is idle, and a big "Mend Pet!" when its health drops below 60%. /petwarn
 ## Version: 1.4
 ## Author: good mens (Mephz on WoW Forever)
-## X-License: MIT (keep the credit when sharing)
+## X-License: All Rights Reserved (free to use; changes for your own use are fine; please don't re-upload)
 ## SavedVariablesPerCharacter: PetWarnDB
 ## IconTexture: Interface\Icons\Ability_GhoulFrenzy
 Skin.lua
