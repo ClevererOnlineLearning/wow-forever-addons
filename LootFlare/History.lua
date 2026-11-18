@@ -2,7 +2,7 @@
 -- subzone and mob, so you can see where the gold is.
 -- Prices come only from Auctionator's and TSM's public APIs (Auctionator first, then TSM's
 -- market value), never from their saved data. Soulbound and grey items count at vendor price.
--- Written by good mens (Mephz on WoW Forever). MIT licence.
+-- Written by good mens (Mephz on WoW Forever). All rights reserved; see LICENSE.txt.
 local _, ns = ...
 local S = ns.Skin
 local LF = LootFlare

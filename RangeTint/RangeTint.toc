@@ -3,7 +3,7 @@
 ## Notes: Colours your action buttons: red when out of range, a soft teal border near the edge, purple when too close, blue when out of mana. /rtint
 ## Version: 1.2
 ## Author: good mens (Mephz on WoW Forever)
-## X-License: MIT (keep the credit when sharing)
+## X-License: All Rights Reserved (free to use; changes for your own use are fine; please don't re-upload)
 ## SavedVariables: RangeTintDB
 ## IconTexture: Interface\Icons\Ability_Marksmanship
 Skin.lua
