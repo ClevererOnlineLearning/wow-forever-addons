@@ -142,7 +142,7 @@ status:SetSpacing(3)
 -- Tooltips (plain words)
 ------------------------------------------------------------------------
 Tip(mobEdit, "Mob name", "Type the name of the mob you want. A list of matches pops up: click one, or use Up/Down and Enter.")
-Tip(mob2Edit, "Second target (optional)", "A second mob to look for. Your Find key then switches between the two: each press tries the other one first, and if only one is around it finds that one. Shift+click in the lists below (or Shift+Enter in the search box) puts a name here.")
+Tip(mob2Edit, "Second target (optional)", "A second mob to look for. Your Find key then switches between the two: each press tries the other one first, and if only one is around it finds that one. Click this box, then pick from the lists below, to put a name here (or Shift+click a name). The search box has a 2nd box too.")
 Tip(clear2Btn, "Clear", "Stop looking for the second target.")
 Tip(favBtn, "Save", "Keep this name in your Saved list, so you can pick it again later.")
 Tip(nearbyBtn, "Nearby", "Pick from the mobs that live in the zone you're in. Needs the Questie addon. The name goes into the box you clicked last (Shift+click: the second box).")
@@ -318,7 +318,8 @@ local function ShowSuggestions(edit, pick)
 end
 
 -- Wires an edit box: list follows typing; Up/Down highlight a match, Enter or Tab takes it
--- (Tab takes the top one if none is highlighted); Escape/focus loss closes the list.
+-- (Tab takes the top one if none is highlighted; the search box's two boxes use Tab to move
+-- between them instead); Escape/focus loss closes the list.
 -- Must be called after the box's own OnEnterPressed is set: that stays the "no selection" action.
 local function AttachSuggestions(edit, pick)
 	edit:HookScript("OnTextChanged", function(self, user) if user then ShowSuggestions(self, pick) end end)
@@ -661,36 +662,86 @@ mm:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
 ------------------------------------------------------------------------
 -- Search box (minimap right-click, or the Search key): Enter picks, Escape cancels
 ------------------------------------------------------------------------
-local q = Popup("TargetFinderQuick", 272, 102, "DIALOG")
+local q = Popup("TargetFinderQuick", 272, 134, "DIALOG")
 local qTitle = q:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 qTitle:SetPoint("TOPLEFT", 12, -11)
 qTitle:SetText("Who are you looking for?")
-local qEdit = S.Edit(q, 248, 24)
-qEdit:SetPoint("TOPLEFT", 12, -30)
+-- both targets, one box each: Tab moves between them, Enter saves both
+local qBoxes = {}
+for i, label in ipairs({ "1st", "2nd" }) do
+	local t = q:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	t:SetPoint("TOPLEFT", 12, -37 - (i - 1) * 30)
+	t:SetText(label)
+	local e = S.Edit(q, 216, 24)
+	e:SetPoint("TOPLEFT", 44, -30 - (i - 1) * 30)
+	qBoxes[i] = e
+end
+local qEdit, qEdit2 = qBoxes[1], qBoxes[2]
 local qHint = q:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-qHint:SetPoint("TOPLEFT", 12, -64)
+qHint:SetPoint("TOPLEFT", 12, -96)
 qHint:SetWidth(248)
 qHint:SetJustifyH("LEFT")
-local HINT = GREY .. "Up/Down = choose   Enter = pick   Esc = cancel|r\n" .. GREY .. "Shift+Enter = make it your second target|r"
+local HINT = GREY .. "Tab = other box   Up/Down = choose a match|r\n" .. GREY .. "Enter = save   Esc = cancel|r"
 
-local function QuickTrack(name, picked)
-	local ok, msg = TF.Track(name, IsShiftKeyDown and IsShiftKeyDown() and true or false, picked)
-	if not ok then qHint:SetText(RED .. msg .. "|r") return end
-	TF.Print(msg)
-	qEdit:ClearFocus()
+-- Saves what's in the two boxes (only what changed). An empty 2nd box = no second target.
+local function QuickSave()
+	local db = TargetFinderDB
+	local n1, n2 = TF.Clean(qEdit:GetText()), TF.Clean(qEdit2:GetText())
+	local msgs = {}
+	local function run(ok, msg)
+		if not ok then qHint:SetText(RED .. msg .. "|r") return false end
+		msgs[#msgs + 1] = msg
+		return true
+	end
+	local function first()
+		if n1 == TF.Clean(db.mob) and (qEdit.picked and true or false) == (db.mobPicked and true or false) then return true end
+		return run(TF.Track(n1, false, qEdit.picked))
+	end
+	local function second()
+		if n2 == "" then
+			if TF.Clean(db.mob2) == "" then return true end
+			return run(TF.ClearSecond())
+		end
+		if n2 == TF.Clean(db.mob2) and (qEdit2.picked and true or false) == (db.mob2Picked and true or false) then return true end
+		return run(TF.Track(n2, true, qEdit2.picked))
+	end
+	if n1 == "" and n2 == "" then
+		run(TF.ClearMob())
+	elseif n1 == "" then
+		if not (second() and first()) then return end -- the second name first, so there's always one to search for
+	else
+		if not (first() and second()) then return end
+	end
+	for _, m in ipairs(msgs) do TF.Print(m) end
+	qEdit:ClearFocus(); qEdit2:ClearFocus()
 	q:Hide()
 end
-qEdit:SetScript("OnEnterPressed", function(self) TF.HideSuggestions(); QuickTrack(self:GetText()) end)
-qEdit:SetScript("OnEscapePressed", function(self) self:ClearFocus(); q:Hide() end) -- nothing saved
-AttachSuggestions(qEdit, function(name) QuickTrack(name, true) end)
+
+for i, e in ipairs(qBoxes) do
+	local other = qBoxes[3 - i]
+	e:SetScript("OnEnterPressed", function() TF.HideSuggestions(); QuickSave() end)
+	e:SetScript("OnEscapePressed", function(self) self:ClearFocus(); q:Hide() end) -- nothing saved
+	-- a match picked from the list (Up/Down + Enter, or a click) fills this box; Enter again saves
+	AttachSuggestions(e, function(name) e:SetText(name); e.picked = true end)
+	e:HookScript("OnTextChanged", function(self, user) if user then self.picked = false end end)
+	-- Tab only moves to the other box; it never picks or saves anything
+	e:SetScript("OnTabPressed", function()
+		TF.HideSuggestions()
+		other:SetFocus()
+		other:HighlightText()
+	end)
+end
 AddHint(qEdit, "Type a mob's name...")
+AddHint(qEdit2, "Second target (optional)")
 q:SetScript("OnHide", TF.HideSuggestions)
 
 function TF.QuickEdit(anchor)
 	if q:IsShown() then q:Hide() return end
 	q:ClearAllPoints()
 	if anchor then q:SetPoint("TOPRIGHT", anchor, "BOTTOMLEFT", 0, 0) else q:SetPoint("CENTER", UIParent, "CENTER", 0, 120) end
-	qEdit:SetText(TargetFinderDB.mob)
+	local db = TargetFinderDB
+	qEdit:SetText(db.mob or ""); qEdit.picked = db.mobPicked and true or false
+	qEdit2:SetText(db.mob2 or ""); qEdit2.picked = db.mob2Picked and true or false
 	qHint:SetText(HINT)
 	q:Show()
 	qEdit:SetFocus()
