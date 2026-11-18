@@ -6,7 +6,7 @@ _G.TargetFinder = TF
 
 TF.BUTTON_NAME = "TargetFinderSecureButton"
 TF.BINDING = "CLICK TargetFinderSecureButton:LeftButton"
-local MAX_BODY = 255
+local MAX_BODY = 1023 -- the button's own action (macrotext), not a macro slot: 255 is only the limit for macros you write
 local MAX_FAVORITES = 10
 local MAX_RECENT = 8
 local CLASS_DEFAULT_SPELL = { DRUID = "Moonfire", HUNTER = "Hunter's Mark" }
