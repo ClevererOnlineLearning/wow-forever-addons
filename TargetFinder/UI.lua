@@ -145,9 +145,9 @@ Tip(mobEdit, "Mob name", "Type the name of the mob you want. A list of matches p
 Tip(mob2Edit, "Second target (optional)", "A second mob to look for. Your Find key then switches between the two: each press tries the other one first, and if only one is around it finds that one. Shift+click in the lists below (or Shift+Enter in the search box) puts a name here.")
 Tip(clear2Btn, "Clear", "Stop looking for the second target.")
 Tip(favBtn, "Save", "Keep this name in your Saved list, so you can pick it again later.")
-Tip(nearbyBtn, "Nearby", "Pick from the mobs that live in the zone you're in. Needs the Questie addon. Shift+click a name to make it your second target.")
-Tip(questBtn, "Quests", "Pick a mob you need to kill for one of your quests. Shift+click a name to make it your second target.")
-Tip(savedBtn, "Saved", "Your saved names and the names you used recently. Shift+click a name to make it your second target.")
+Tip(nearbyBtn, "Nearby", "Pick from the mobs that live in the zone you're in. Needs the Questie addon. The name goes into the box you clicked last (Shift+click: the second box).")
+Tip(questBtn, "Quests", "Pick a mob you need to kill for one of your quests. The name goes into the box you clicked last (Shift+click: the second box).")
+Tip(savedBtn, "Saved", "Your saved names and the names you used recently. The name goes into the box you clicked last (Shift+click: the second box).")
 Tip(partialChk, "Match part of the name", "Off: only the exact name. On: any mob whose name contains what you typed, e.g. \"Zanzil\" finds Zanzil Witch Doctor, Zanzil Zombie and the rest. Map dots then show all of them. A name you pick from a list (suggestions, Nearby, Quests, Saved) always means that exact mob; the box shows \"exact\" or \"part\".")
 Tip(findKeyBtn, "Find key", "Click, then press the key you want. Pressing that key looks for your mob. Press it again and again while you look around.")
 Tip(searchKeyBtn, "Search key (optional)", "Click, then press a key. That key opens a small box where you can type a new mob name.")
@@ -245,10 +245,14 @@ f:SetScript("OnShow", function() lastMsg = nil; Refresh() end)
 local function Say(ok, msg) lastMsg = (ok and GREEN or RED) .. msg .. "|r"; Refresh() end
 local function Changed() TF.Apply(); Refresh() end
 
--- Shift = the second target, everywhere a name is picked.
+-- A name picked from a list (Nearby, Quests, Saved) goes into the name box you clicked last;
+-- Shift+click always means the second box.
+local useSecond = false
+mobEdit:HookScript("OnEditFocusGained", function() useSecond = false end)
+mob2Edit:HookScript("OnEditFocusGained", function() useSecond = true end)
 local function Choose(name, second)
 	mobEdit:ClearFocus(); mob2Edit:ClearFocus()
-	if second == nil then second = IsShiftKeyDown and IsShiftKeyDown() and true or false end
+	if second == nil then second = (IsShiftKeyDown and IsShiftKeyDown()) and true or useSecond end
 	Say(TF.Track(name, second, true)) -- picked from a list: that exact mob
 end
 
