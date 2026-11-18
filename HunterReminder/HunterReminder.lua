@@ -20,7 +20,9 @@ local DEFAULTS = {
 	locked = true,
 	showResting = false, -- remind in cities/inns too (when out of combat)
 	hideMounted = true,
-	sound = true,        -- warning sound when a buff drops during combat
+	sound = true,        -- play a sound (voice, effect or game sound) when a reminder appears
+	trueshotSound = "trueshot_harry",
+	hawkSound = "aspect_harry",
 	scale = 1.0,
 	point = { "CENTER", "UIParent", "CENTER", 0, 160 },
 	-- When to remind, per buff: "always", "combat" (in combat only) or "off".
@@ -37,6 +39,46 @@ local DEFAULTS = {
 HunterReminder = {}
 local HR = HunterReminder
 HR.TRACKED = TRACKED
+
+-- Sounds to pick from for each reminder. Text ids are files in the add-on's sounds folder (voices made
+-- with ElevenLabs, effects, and custom1-3.ogg you can add yourself); numbers are the game's own sounds.
+HR.SOUNDS = {
+	{ id = 0, name = "No sound" },
+	{ id = "trueshot_harry", name = "Voice: \"Trueshot Aura!\" (Harry)" },
+	{ id = "trueshot_sarah", name = "Voice: \"Trueshot Aura!\" (Sarah)" },
+	{ id = "trueshot_missing_harry", name = "Voice: \"Trueshot's down.\" (Harry)" },
+	{ id = "trueshot_missing_sarah", name = "Voice: \"Trueshot's down.\" (Sarah)" },
+	{ id = "aspect_harry", name = "Voice: \"Check your aspect!\" (Harry)" },
+	{ id = "aspect_sarah", name = "Voice: \"Check your aspect!\" (Sarah)" },
+	{ id = "hawk_harry", name = "Voice: \"Aspect of the Hawk!\" (Harry)" },
+	{ id = "hawk_sarah", name = "Voice: \"Aspect of the Hawk!\" (Sarah)" },
+	{ id = "sfx_chime", name = "Alert chime" },
+	{ id = "sfx_horn", name = "War horn" },
+	{ id = "sfx_bowstring", name = "Bowstring" },
+	{ id = 8959, name = "Raid warning (game)" },
+	{ id = 8960, name = "Ready check (game)" },
+	{ id = 3081, name = "Whisper (game)" },
+	{ id = "custom1", name = "Custom 1 (sounds\\custom1.ogg)" },
+	{ id = "custom2", name = "Custom 2 (sounds\\custom2.ogg)" },
+	{ id = "custom3", name = "Custom 3 (sounds\\custom3.ogg)" },
+}
+
+function HR.PlaySoundID(id)
+	if type(id) == "string" then
+		pcall(PlaySoundFile, "Interface\\AddOns\\HunterReminder\\sounds\\" .. id .. ".ogg", "Master")
+	elseif type(id) == "number" and id > 0 then
+		pcall(PlaySound, id, "Master")
+	end
+end
+
+-- A reminder's sound, at most once every 8 seconds (so one flickering on and off doesn't nag)
+local lastSound = {}
+function HR.PlayReminder(key)
+	local now = GetTime()
+	if lastSound[key] and now - lastSound[key] < 8 then return end
+	lastSound[key] = now
+	HR.PlaySoundID(HR.db and HR.db[key .. "Sound"])
+end
 
 local db
 local FEIGN_ID = 5384
@@ -252,7 +294,6 @@ local elapsedTotal, sinceCheck = 0, 0
 local function Refresh()
 	local buffs, hidden
 	if not AurasSecret() then buffs, hidden = PlayerBuffNames() end
-	local inCombat = InCombatLockdown() or UnitAffectingCombat("player")
 	local testing = GetTime() < testUntil
 	for _, f in ipairs(icons) do
 		local t = f.t
@@ -270,8 +311,8 @@ local function Refresh()
 		local missing = KnowsAny(t) and present == false
 		local remind = ShouldRemind(t)
 		local show = testing or (missing and remind) or not db.locked
-		if missing and remind and not wasMissing[t.key] and inCombat and db.sound and not testing then
-			PlaySound((SOUNDKIT and SOUNDKIT.RAID_WARNING) or 8959, "Master")
+		if missing and remind and not wasMissing[t.key] and db.sound and not testing then
+			HR.PlayReminder(t.key)
 		end
 		wasMissing[t.key] = missing and remind
 		if show ~= f:IsShown() then f:SetShown(show) end
@@ -669,7 +710,7 @@ SlashCmdList.HUNTERREMINDER = function(msg)
 		print("  /hrem test  - preview for 5s      /hrem scale 1.2  - size")
 		print("  /hrem rest  - also remind in cities/inns (" .. OnOff(db.showResting) .. ")")
 		print("  /hrem mount  - hide while mounted (" .. OnOff(db.hideMounted) .. ")")
-		print("  /hrem sound  - warning sound if a buff drops in combat (" .. OnOff(db.sound) .. ")")
+		print("  /hrem sound  - a sound or voice when a reminder appears (" .. OnOff(db.sound) .. "; pick them in /hrem)")
 		print("  /hrem reset  - reset position and size")
 		print("  /hrem track  - switch tracking to match your target (" .. OnOff(db.autoTrack) .. ")")
 		print("  /hrem tracklock  - lock tracking: keep the current one, pause auto tracking (" .. OnOff(db.trackLocked) .. ")")
