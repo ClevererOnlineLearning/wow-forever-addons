@@ -379,6 +379,11 @@ function QA.ZoneQuests(map)
 	local db = DB()
 	local level, log = QA.PlayerLevel(), QA.QuestLog()
 	local out, skipped, inPlan, handed, rejected = {}, {}, {}, {}, {}
+	local later, aside = QA.LaterSet(), {}
+	for id in pairs(later) do
+		if Done(id) or (log[id] and log[id].complete) then later[id] = nil else aside[#aside + 1] = id end
+	end
+	table.sort(aside)
 	local function add(rec, deps)
 		rec.deps = deps or {}
 		out[#out + 1] = rec
@@ -386,7 +391,7 @@ function QA.ZoneQuests(map)
 		if rec.handin then handed[rec.id] = true end
 	end
 	for id, st in pairs(log) do
-		local rec = QA.ZoneQuest(id, map, st)
+		local rec = not later[id] and QA.ZoneQuest(id, map, st)
 		if rec then add(rec) end
 	end
 	table.sort(out, function(a, b) return a.id < b.id end)
@@ -394,7 +399,7 @@ function QA.ZoneQuests(map)
 	local cands = {}
 	local ptrs = db and db.QuestPointers
 	for id in pairs(type(ptrs) == "table" and ptrs or {}) do
-		if not log[id] and not Done(id) and PersonOn(Q(id, "startedBy"), map) and Eligible(id, level) then
+		if not log[id] and not later[id] and not Done(id) and PersonOn(Q(id, "startedBy"), map) and Eligible(id, level) then
 			cands[#cands + 1] = id
 		end
 	end
@@ -429,7 +434,7 @@ function QA.ZoneQuests(map)
 			end
 		end
 	end
-	return { quests = out, skipped = skipped }
+	return { quests = out, skipped = skipped, later = aside }
 end
 
 -- The route -----------------------------------------------------------------------------------------
@@ -576,6 +581,22 @@ local function CharKey()
 	return (n or "?") .. "-" .. (r or "?")
 end
 
+-- quests you set aside with "Later" (per character): { [questID] = true }
+function QA.LaterSet()
+	QuestAheadDB = type(QuestAheadDB) == "table" and QuestAheadDB or {}
+	QuestAheadDB.later = type(QuestAheadDB.later) == "table" and QuestAheadDB.later or {}
+	local k = CharKey()
+	QuestAheadDB.later[k] = type(QuestAheadDB.later[k]) == "table" and QuestAheadDB.later[k] or {}
+	return QuestAheadDB.later[k]
+end
+
+function QA.LaterNames()
+	local ids = {}
+	for id in pairs(QA.LaterSet()) do ids[#ids + 1] = id end
+	table.sort(ids)
+	return #ids > 0 and Names(ids) or nil, #ids
+end
+
 local function SavePlanMap(map)
 	QuestAheadDB = type(QuestAheadDB) == "table" and QuestAheadDB or {}
 	QuestAheadDB.zone = type(QuestAheadDB.zone) == "table" and QuestAheadDB.zone or {}
@@ -599,7 +620,7 @@ function QA.PlanZone(map, quiet)
 	local found = QA.ZoneQuests(map)
 	local list = {}
 	for _, r in ipairs(found.quests) do list[#list + 1] = r.id end
-	if #found.quests == 0 then
+	if #found.quests == 0 and not QA.laterReplan then
 		if not quiet then
 			print(TAG .. "nothing to plan in " .. MapName(map) .. ": no quests Questie knows of that you can do there now.")
 		end
@@ -611,6 +632,9 @@ function QA.PlanZone(map, quiet)
 	local most
 	for _, pull in ipairs(QA.PULLS) do
 		local s, t, a = QA.BuildZoneRoute(map, found.quests, start, pull)
+		for _, id in ipairs(found.later) do
+			a[#a + 1] = { later = id, text = "|cff808080Later:|r " .. Names({ id }) .. " |cff808080(/qahead later clear brings it back)|r" }
+		end
 		local n = 0
 		for _, st in ipairs(s) do n = n + #st.actions end
 		if not most or n > most or (n == most and t < travel) then stops, travel, away, most = s, t, a, n end
@@ -750,6 +774,37 @@ function QA.ZoneSkip()
 	QA.ZoneRefresh()
 end
 
+-- "Later": set aside the unfinished quests of a step (elites you can't do yet, say); planned again without them
+function QA.ZoneLater(i)
+	local p = QA.zone
+	i = i or QA.ZoneCurrent()
+	if not p or not p.stops[i] then return end
+	local log, later, ids, seen = QA.QuestLog(), QA.LaterSet(), {}, {}
+	for _, a in ipairs(p.stops[i].actions) do
+		if not a.done then
+			for _, q in ipairs(a.quests) do
+				if not seen[q] and not Done(q) and not (log[q] and log[q].complete) then
+					seen[q] = true
+					later[q] = true
+					ids[#ids + 1] = q
+				end
+			end
+		end
+	end
+	if #ids == 0 then print(TAG .. "nothing to set aside in this step (it's only hand-ins of finished quests). Skip passes over it.") return end
+	print(TAG .. "set aside for later: " .. Names(ids) .. ". /qahead later clear brings them back.")
+	QA.laterReplan = true
+	QA.PlanZone(p.map, true)
+	QA.laterReplan = nil
+end
+
+function QA.ZoneLaterClear()
+	local later = QA.LaterSet()
+	for k in pairs(later) do later[k] = nil end
+	needs = nil
+	if QA.zone then QA.PlanZone(QA.zone.map, true) end
+end
+
 -- TomTom arrow to the step you're on (only our own waypoint; nothing else of TomTom's is touched)
 local wayUid, wayFor
 function QA.ZoneArrow()
@@ -786,8 +841,9 @@ end
 local function Needs(map)
 	if needs and needs.map == map then return needs.list end
 	local byKey, list = {}, {}
+	local later = QA.LaterSet()
 	for q, e in pairs(QA.QuestLog()) do
-		if not e.complete and not Done(q) then
+		if not e.complete and not Done(q) and not later[q] then
 			local objs = {}
 			if C_QuestLog and C_QuestLog.GetQuestObjectives then
 				local ok, o = pcall(C_QuestLog.GetQuestObjectives, q)
@@ -974,7 +1030,7 @@ local function BuildGuide()
 	g.bg:SetColorTexture(0, 0, 0, 0.72)
 	g.title = g:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	g.title:SetPoint("TOPLEFT", 8, -7)
-	g.title:SetPoint("RIGHT", -100, 0)
+	g.title:SetPoint("RIGHT", -154, 0)
 	g.title:SetJustifyH("LEFT")
 	-- what's nearby (updated every NEAR_EVERY seconds while the window is open), then the steps
 	g.near = {}
@@ -1021,6 +1077,9 @@ local function BuildGuide()
 		return b
 	end
 	g.skip = btn("Skip", -28, QA.ZoneSkip, "Count the step you're on as done")
+	g.later = btn("Later", -136, function() QA.ZoneLater() end,
+		"Come back to this later: the step's unfinished quests (elites you can't do yet, say) are set aside and the route is "
+		.. "planned without them. They're listed at the bottom; /qahead later clear brings them back.")
 	g.replan = btn("Replan", -82, function() if QA.zone then QA.PlanZone(QA.zone.map) end end,
 		"Plan again from where you are now, with what's in your log now")
 	g:EnableMouseWheel(true)

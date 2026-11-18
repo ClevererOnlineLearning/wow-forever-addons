@@ -989,6 +989,17 @@ SlashCmdList.QUESTAHEAD = function(msg)
 		return
 	end
 	if (msg == "zone off" or msg == "zone clear") and QA.ZoneClear then QA.ZoneClear(); return end
+	if msg == "later" and QA.LaterNames then
+		local names, n = QA.LaterNames()
+		print(TAG .. (names and ("set aside (" .. n .. "): " .. names .. ". /qahead later clear brings them back.")
+			or "nothing set aside. The Later button on the zone guide sets a step's quests aside."))
+		return
+	end
+	if msg == "later clear" and QA.ZoneLaterClear then
+		QA.ZoneLaterClear()
+		print(TAG .. "everything you set aside is back in the plan.")
+		return
+	end
 	if msg == "arrow" then
 		QuestAheadDB = type(QuestAheadDB) == "table" and QuestAheadDB or {}
 		QuestAheadDB.arrow = QuestAheadDB.arrow == false
@@ -1006,5 +1017,6 @@ SlashCmdList.QUESTAHEAD = function(msg)
 		.. "Alt-click the icon to pin the follow-on givers; hover a pin for details, Alt-click a pin to look further. "
 		.. "/qahead clear removes the pins. /qahead check if nothing happens.")
 	print("|cff9b6bffQuestAhead|r: Plan zone (button on the world map, or /qahead zone): a route through the quests you can do "
-		.. "in the zone shown, with a guide window. /qahead zone off removes it; /qahead arrow turns the TomTom arrow on or off.")
+		.. "in the zone shown, with a guide window. /qahead zone off removes it; /qahead arrow turns the TomTom arrow on or off. "
+		.. "Later (on the guide) sets a step's quests aside; /qahead later lists them, /qahead later clear brings them back.")
 end
