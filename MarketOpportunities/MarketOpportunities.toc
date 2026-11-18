@@ -4,7 +4,7 @@
 ## Version: 0.1
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: MIT (keep the credit when sharing)
-## SavedVariables: MarketOpportunitiesDB
+## SavedVariables: MarketOpportunitiesDB, MarketOpportunitiesLook
 ## SavedVariablesPerCharacter: MarketOpportunitiesCharDB
 ## OptionalDeps: TradeSkillMaster, Auctionator, ItemTree
 ## IconTexture: Interface\Icons\INV_Misc_Coin_02
