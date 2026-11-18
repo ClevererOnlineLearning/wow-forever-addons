@@ -24,6 +24,8 @@ QA.MARK_SHIFT = 14       -- step numbers sit this far up and right of the spot, 
 QA.NEAR_ROWS = 4         -- "Nearby" lines at the top of the guide window
 QA.NEAR_YARDS = 400      -- mobs closer than this are shown bright, further ones grey
 QA.NEAR_EVERY = 10       -- seconds between "Nearby" updates (and within a second of a quest log change)
+QA.HUNT_EVERY = 3        -- seconds between arrow checks on a kill/loot step
+QA.HUNT_REACHED = 40     -- yards: this close to a spawn spot counts as having checked it
 
 local needs              -- what your log quests still need, mob by mob (rebuilt when the log changes)
 
@@ -755,17 +757,17 @@ function QA.ZoneArrow()
 	if not (TT and TT.AddWaypoint and TT.RemoveWaypoint) then return end
 	local p = QA.zone
 	local on = p and not (type(QuestAheadDB) == "table" and QuestAheadDB.arrow == false)
-	local i = on and QA.ZoneCurrent()
-	local s = on and p.stops[i]
-	if s and wayUid and wayFor == s then return end -- same step: leave it be
+	local t = on and QA.ZoneTarget()
+	local key = t and (tostring(t.stop) .. ":" .. t.x .. ":" .. t.y)
+	if t and wayUid and wayFor == key then return end -- same place: leave it be
 	if wayUid then pcall(TT.RemoveWaypoint, TT, wayUid); wayUid, wayFor = nil, nil end
-	if not s then return end
-	local a = s.actions[1]
-	local plain = (a.text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-	local ok, uid = pcall(TT.AddWaypoint, TT, p.map, s.x, s.y,
-		{ title = "QuestAhead " .. i .. ": " .. plain, persistent = false, minimap = true, world = false, crazy = true,
+	if not t then return end
+	local plain = t.label
+	if not plain then plain = (t.stop.actions[1].text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") end
+	local ok, uid = pcall(TT.AddWaypoint, TT, p.map, t.x, t.y,
+		{ title = "QuestAhead " .. t.i .. ": " .. plain, persistent = false, minimap = true, world = false, crazy = true,
 			silent = true, cleardistance = 0, from = "QuestAhead" })
-	if ok then wayUid, wayFor = uid, s end
+	if ok then wayUid, wayFor = uid, key end
 end
 
 function QA.ZoneClear(keepSaved)
@@ -815,11 +817,12 @@ local function Needs(map)
 					if not n then
 						local pts = SpotsOn(w.src.kind, w.src.id, map)
 						if pts[1] then
-							n = { name = w.mob, what = {}, has = {}, pts = pts }
+							n = { name = w.mob, what = {}, has = {}, pts = pts, quests = {} }
 							byKey[key] = n
 							list[#list + 1] = n
 						end
 					end
+					if n then n.quests[q] = true end
 					if n and not n.has[w.what] then n.has[w.what] = true; n.what[#n.what + 1] = w.what end
 				end
 			end
@@ -854,6 +857,50 @@ function QA.ZoneNearby()
 	end
 	table.sort(out, function(a, b) if a.yards ~= b.yards then return a.yards < b.yards end return a.name < b.name end)
 	return out
+end
+
+-- where the arrow points: the step's spot, except on a kill/loot step, where it's the nearest spawn of
+-- something the step still needs that you haven't been to yet (an empty spot sends you on to the next;
+-- once you've been to them all it starts over)
+local hunt = { seen = {} }
+function QA.ZoneTarget()
+	local p = QA.zone
+	local i = p and QA.ZoneCurrent()
+	local s = p and p.stops[i]
+	if not s then return nil end
+	local plain = { x = s.x, y = s.y, stop = s, i = i }
+	local qs = {}
+	for _, a in ipairs(s.actions) do
+		if a.kind == "work" and not a.done and not a.waiting then
+			for _, q in ipairs(a.quests) do qs[q] = true end
+		end
+	end
+	local me = next(qs) and QA.PlayerSpot(p.map)
+	if not me then return plain end
+	if hunt.stop ~= s then hunt.stop, hunt.seen = s, {} end
+	local w, h = ZoneSize(p.map)
+	local r2 = QA.HUNT_REACHED * QA.HUNT_REACHED
+	local function pick()
+		local best, bd
+		for _, n in ipairs(Needs(p.map)) do
+			local mine = false
+			for q in pairs(qs) do if n.quests[q] then mine = true; break end end
+			if mine then
+				for _, pt in ipairs(n.pts) do
+					local dx, dy = (pt.x - me.x) * w, (pt.y - me.y) * h
+					local d = dx * dx + dy * dy
+					local key = pt.x .. ":" .. pt.y
+					if d <= r2 then hunt.seen[key] = true end
+					if not hunt.seen[key] and (not bd or d < bd) then best, bd = { pt = pt, n = n }, d end
+				end
+			end
+		end
+		return best
+	end
+	local b = pick()
+	if not b then hunt.seen = {}; b = pick() end
+	if not b then return plain end
+	return { x = b.pt.x, y = b.pt.y, stop = s, i = i, label = b.n.name .. " (" .. table.concat(b.n.what, ", ") .. ")" }
 end
 
 function QA.ZoneNearbyUpdate()
@@ -944,6 +991,12 @@ local function BuildGuide()
 		if f.nearWait > 0 then return end
 		f.nearWait = QA.NEAR_EVERY
 		Safe(QA.ZoneNearbyUpdate)
+	end)
+	g:HookScript("OnUpdate", function(f, elapsed)
+		f.huntWait = (f.huntWait or 0) - (elapsed or 0)
+		if f.huntWait > 0 then return end
+		f.huntWait = QA.HUNT_EVERY
+		Safe(QA.ZoneArrow)
 	end)
 	g.rows = {}
 	for i = 1, QA.ZONE_ROWS do
