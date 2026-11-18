@@ -1,13 +1,86 @@
--- A small set of flat, modern widgets shared by good mens' add-ons (each add-on carries its
--- own copy in its private namespace, so they never clash). No libraries, no Blizzard templates.
-local _, ns = ...
+-- A small set of widgets shared by good mens' add-ons (each add-on carries its own copy in its
+-- private namespace, so they never clash). No libraries. Several looks ("themes") and accent
+-- colours: picking one repaints every window of every good mens add-on at once, and it's saved.
+local ADDON, ns = ...
 local S = {}
 ns.Skin = S
 
 S.ACCENT = { 1, 0.82, 0 }
-local BG = { 0.055, 0.055, 0.07, 0.97 }
-local HEAD = { 0.10, 0.10, 0.13, 1 }
-local LINE = { 0.26, 0.26, 0.31, 1 }
+
+------------------------------------------------------------------------
+-- Looks
+------------------------------------------------------------------------
+local DIALOG = { bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+	edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", tile = true, tileSize = 32, edgeSize = 32,
+	insets = { left = 11, right = 12, top = 12, bottom = 11 } }
+local TOOLTIP = { bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16,
+	insets = { left = 4, right = 4, top = 4, bottom = 4 } }
+
+S.THEMES = {
+	{ key = "modern", name = "Modern",
+	  bg = { 0.055, 0.055, 0.07, 0.97 }, head = { 0.10, 0.10, 0.13, 1 }, edge = { 0, 0, 0, 1 },
+	  line = { 0.26, 0.26, 0.31, 1 }, card = { 1, 1, 1, 0.035 }, cardEdge = { 1, 1, 1, 0.08 },
+	  btn = { 0.15, 0.15, 0.18, 1 }, input = { 0.02, 0.02, 0.03, 1 }, box = { 0.36, 0.36, 0.42, 1 },
+	  footer = { 0, 0, 0, 0.25 }, accentLine = 0.55 },
+	{ key = "pixel", name = "Pixel (ElvUI style)",
+	  bg = { 0.06, 0.06, 0.06, 0.93 }, head = { 0.09, 0.09, 0.09, 1 }, edge = { 0, 0, 0, 1 },
+	  line = { 0, 0, 0, 1 }, card = { 0.1, 0.1, 0.1, 0.8 }, cardEdge = { 0, 0, 0, 1 },
+	  btn = { 0.11, 0.11, 0.11, 1 }, input = { 0.03, 0.03, 0.03, 1 }, box = { 0, 0, 0, 1 },
+	  footer = { 0.08, 0.08, 0.08, 1 }, accentLine = 1, font = "Fonts\\ARIALN.TTF", fontFlags = "OUTLINE", fontAdd = 1 },
+	{ key = "classic", name = "Classic (Blizzard)", classic = true,
+	  bg = { 0, 0, 0, 0 }, head = { 0, 0, 0, 0 }, edge = { 0, 0, 0, 0 },
+	  line = { 0.55, 0.47, 0.3, 1 }, card = { 0, 0, 0, 0 }, cardEdge = { 0, 0, 0, 0 },
+	  btn = { 0.15, 0.15, 0.18, 1 }, input = { 0, 0, 0, 0.65 }, box = { 0.55, 0.47, 0.3, 1 },
+	  footer = { 0, 0, 0, 0 }, accentLine = 0 },
+	{ key = "glass", name = "Glass (sleek, see-through)",
+	  bg = { 0.035, 0.06, 0.1, 0.74 }, head = { 0.06, 0.1, 0.16, 0.82 }, edge = { 0.55, 0.75, 1, 0.28 },
+	  line = { 0.42, 0.58, 0.78, 0.5 }, card = { 1, 1, 1, 0.05 }, cardEdge = { 0.55, 0.75, 1, 0.16 },
+	  btn = { 0.09, 0.15, 0.23, 0.88 }, input = { 0.01, 0.03, 0.06, 0.85 }, box = { 0.42, 0.58, 0.78, 0.6 },
+	  footer = { 0, 0, 0, 0.18 }, accentLine = 0.85 },
+	{ key = "midnight", name = "Midnight (deep purple)",
+	  bg = { 0.06, 0.04, 0.1, 0.96 }, head = { 0.11, 0.07, 0.17, 1 }, edge = { 0, 0, 0, 1 },
+	  line = { 0.3, 0.22, 0.42, 1 }, card = { 0.6, 0.4, 1, 0.05 }, cardEdge = { 0.6, 0.4, 1, 0.16 },
+	  btn = { 0.16, 0.11, 0.24, 1 }, input = { 0.03, 0.02, 0.05, 1 }, box = { 0.4, 0.3, 0.55, 1 },
+	  footer = { 0, 0, 0, 0.3 }, accentLine = 0.6 },
+	{ key = "light", name = "Stone (light grey)",
+	  bg = { 0.2, 0.2, 0.22, 0.97 }, head = { 0.27, 0.27, 0.3, 1 }, edge = { 0, 0, 0, 1 },
+	  line = { 0.45, 0.45, 0.5, 1 }, card = { 1, 1, 1, 0.06 }, cardEdge = { 1, 1, 1, 0.14 },
+	  btn = { 0.3, 0.3, 0.34, 1 }, input = { 0.1, 0.1, 0.11, 1 }, box = { 0.55, 0.55, 0.6, 1 },
+	  footer = { 0, 0, 0, 0.2 }, accentLine = 0.7 },
+}
+S.ACCENTS = {
+	{ key = "gold", name = "Gold", c = { 1, 0.82, 0 } },
+	{ key = "class", name = "Class colour" },
+	{ key = "blue", name = "Sky blue", c = { 0.3, 0.7, 1 } },
+	{ key = "green", name = "Fel green", c = { 0.35, 0.95, 0.3 } },
+	{ key = "red", name = "Blood red", c = { 1, 0.28, 0.25 } },
+	{ key = "purple", name = "Arcane purple", c = { 0.75, 0.45, 1 } },
+	{ key = "white", name = "Ice white", c = { 0.9, 0.95, 1 } },
+}
+
+-- The chosen look is shared by every good mens add-on loaded (the first one loaded makes the table).
+local LOOK = _G.GoodMensLook
+if type(LOOK) ~= "table" or not LOOK.copies then
+	LOOK = { theme = "modern", accent = "gold", t = 0, copies = {}, stores = {} }
+	_G.GoodMensLook = LOOK
+end
+
+local function Find(list, key) for _, x in ipairs(list) do if x.key == key then return x end end end
+local function T() return Find(S.THEMES, LOOK.theme) or S.THEMES[1] end
+function S.Theme() return T() end
+function S.LookKeys() return LOOK.theme, LOOK.accent end
+
+local function AccentColor(key)
+	local a = Find(S.ACCENTS, key) or S.ACCENTS[1]
+	if a.key == "class" then
+		local class = UnitClass and select(2, UnitClass("player"))
+		local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+		if c then return { c.r, c.g, c.b } end
+		return S.ACCENTS[1].c
+	end
+	return a.c
+end
 
 local function Color(t, c, a) t:SetColorTexture(c[1], c[2], c[3], a or c[4] or 1) end
 
@@ -24,16 +97,176 @@ function S.Border(f, r, g, b, a)
 	end
 	for _, e in ipairs(f.edges) do e:SetColorTexture(r, g, b, a or 1) end
 end
+local function Edge(f, c) S.Border(f, c[1], c[2], c[3], c[4] or 1) end
 
--- A plain dark panel (popups, small boxes)
+-- Blizzard's own frame art (Classic look), put on any frame; nil takes it off again
+local function Backdrop(f, info, bg, border)
+	if not f.SetBackdrop then
+		if not (info and BackdropTemplateMixin and Mixin) then return end
+		Mixin(f, BackdropTemplateMixin)
+		if f.OnBackdropSizeChanged then f:HookScript("OnSizeChanged", f.OnBackdropSizeChanged) end
+	end
+	if not pcall(f.SetBackdrop, f, info) then return end
+	if info and bg and f.SetBackdropColor then f:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1) end
+	if info and border and f.SetBackdropBorderColor then f:SetBackdropBorderColor(border[1], border[2], border[3], border[4] or 1) end
+end
+
+-- Font strings follow the look too (Pixel uses a narrow outlined font)
+local function FontOf(fs, objName)
+	fs.lookFont = objName
+	local o = objName and _G[objName]
+	if o and o.GetFont then
+		local ok, file, size, flags = pcall(o.GetFont, o)
+		if ok and size then fs.lookSize, fs.lookFlags = size, flags end
+	end
+end
+local function PaintFont(fs, th)
+	if not fs.lookFont then return end
+	if th.font and fs.lookSize and fs.SetFont then
+		pcall(fs.SetFont, fs, th.font, fs.lookSize + (th.fontAdd or 0), th.fontFlags or "")
+	elseif fs.SetFontObject then
+		pcall(fs.SetFontObject, fs, fs.lookFont)
+	end
+end
+
+-- Everything this copy made, so a new look can repaint it in place.
+local mine, fonts = {}, {}
+local paint = {}
+
+function paint.panel(f, th)
+	if th.classic then
+		Backdrop(f, TOOLTIP, { 0.05, 0.05, 0.05, f.lookAlpha or 0.95 }, { 0.75, 0.65, 0.45, 1 })
+		f.bg:SetColorTexture(0, 0, 0, 0)
+		Edge(f, { 0, 0, 0, 0 })
+	else
+		Backdrop(f, nil)
+		Color(f.bg, th.bg, f.lookAlpha and math.min(f.lookAlpha, th.bg[4]) or th.bg[4])
+		Edge(f, th.edge)
+	end
+end
+function paint.window(f, th)
+	if th.classic then
+		Backdrop(f, DIALOG, { 1, 1, 1, 1 }, { 1, 1, 1, 1 })
+		f.bg:SetColorTexture(0, 0, 0, 0)
+		Edge(f, { 0, 0, 0, 0 })
+	else
+		Backdrop(f, nil)
+		Color(f.bg, th.bg)
+		Edge(f, th.edge)
+	end
+	Color(f.headBg, th.head)
+	f.headLine:SetColorTexture(S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], th.accentLine)
+end
+function paint.card(c, th)
+	if th.classic then
+		Backdrop(c, TOOLTIP, { 0, 0, 0, 0.35 }, { 0.6, 0.52, 0.35, 0.9 })
+	else
+		Backdrop(c, nil)
+	end
+	Color(c.bg, th.card)
+	Edge(c, th.cardEdge)
+end
+function paint.button(b, th)
+	if th.classic then
+		b.bg:SetTexture(b.primary and "Interface\\Buttons\\UI-Panel-Button-Up" or "Interface\\Buttons\\UI-Panel-Button-Up")
+		if b.bg.SetTexCoord then b.bg:SetTexCoord(0, 0.625, 0, 0.6875) end
+		Edge(b, { 0, 0, 0, 0 })
+	else
+		if b.bg.SetTexCoord then b.bg:SetTexCoord(0, 1, 0, 1) end
+		if b.primary then
+			local a = S.ACCENT
+			b.bg:SetColorTexture(a[1] * 0.42, a[2] * 0.42, a[3] * 0.42, 1)
+			S.Border(b, math.min(1, a[1] * 0.9), math.min(1, a[2] * 0.9), math.min(1, a[3] * 0.9), 1)
+		else
+			Color(b.bg, th.btn)
+			Edge(b, th.line)
+		end
+	end
+end
+function paint.check(c, th)
+	Color(c.bg, th.input)
+	Edge(c, th.box)
+end
+function paint.edit(e, th)
+	Color(e.bg, th.input)
+	if e.HasFocus and e:HasFocus() then S.Border(e, S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.8) else Edge(e, th.line) end
+end
+function paint.footer(f, th)
+	Color(f.bg, th.footer)
+end
+function paint.slider(s)
+	s.fill:SetColorTexture(S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.85)
+	s.thumb:SetColorTexture(math.min(1, S.ACCENT[1] + 0.2), math.min(1, S.ACCENT[2] + 0.2), math.min(1, S.ACCENT[3] + 0.2), 1)
+end
+function paint.accent(t)
+	t:SetColorTexture(S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], t.lookAlpha or 1)
+end
+
+local function Track(kind, f)
+	mine[#mine + 1] = { kind = kind, f = f }
+	pcall(paint[kind], f, T())
+	return f
+end
+local function TrackFont(fs, objName)
+	FontOf(fs, objName)
+	fonts[#fonts + 1] = fs
+	PaintFont(fs, T())
+	return fs
+end
+
+-- Repaints what this copy made
+local function RepaintMine()
+	local c = AccentColor(LOOK.accent)
+	S.ACCENT[1], S.ACCENT[2], S.ACCENT[3] = c[1], c[2], c[3]
+	local th = T()
+	for _, e in ipairs(mine) do pcall(paint[e.kind], e.f, th) end
+	for _, fs in ipairs(fonts) do PaintFont(fs, th) end
+	if S.onLook then pcall(S.onLook) end
+end
+LOOK.copies[#LOOK.copies + 1] = RepaintMine
+
+local function RepaintAll() for _, f in ipairs(LOOK.copies) do pcall(f) end end
+
+-- Picks a look (theme and/or accent), saves it with every add-on and repaints them all
+function S.SetLook(theme, accent)
+	if theme and Find(S.THEMES, theme) then LOOK.theme = theme end
+	if accent and Find(S.ACCENTS, accent) then LOOK.accent = accent end
+	LOOK.t = (time and time()) or (os and os.time and os.time()) or (LOOK.t + 1)
+	for _, st in ipairs(LOOK.stores) do st.theme, st.accent, st.t = LOOK.theme, LOOK.accent, LOOK.t end
+	RepaintAll()
+end
+
+-- Each add-on keeps a copy in its own saved variable (<Addon>Look); the newest one wins.
+-- Saved variables are in place once the add-on's files have run, so a timer (no event frame) reads them.
+function S.LoadLook()
+	local key = tostring(ADDON) .. "Look"
+	local st = _G[key]
+	if type(st) ~= "table" then st = {}; _G[key] = st end
+	local known = false
+	for _, x in ipairs(LOOK.stores) do if x == st then known = true end end
+	if not known then LOOK.stores[#LOOK.stores + 1] = st end
+	if (tonumber(st.t) or 0) > (LOOK.t or 0) and Find(S.THEMES, st.theme) then
+		LOOK.theme, LOOK.accent, LOOK.t = st.theme, st.accent or LOOK.accent, st.t
+		RepaintAll()
+	else
+		st.theme, st.accent, st.t = LOOK.theme, LOOK.accent, LOOK.t
+		RepaintMine()
+	end
+end
+if C_Timer and C_Timer.After then C_Timer.After(0, function() pcall(S.LoadLook) end) end
+
+------------------------------------------------------------------------
+-- Widgets
+------------------------------------------------------------------------
+
+-- A plain panel (popups, small boxes)
 function S.Panel(f, alpha)
 	f.goodmensUI = true -- UI Fade leaves our windows and pop-ups solid
 	local bg = f:CreateTexture(nil, "BACKGROUND", nil, -8)
 	bg:SetAllPoints()
-	bg:SetColorTexture(BG[1], BG[2], BG[3], alpha or BG[4])
-	f.bg = bg
+	f.bg, f.lookAlpha = bg, alpha
 	S.Border(f, 0, 0, 0, 1)
-	return f
+	return Track("panel", f)
 end
 
 local function CloseButton(parent)
@@ -62,7 +295,7 @@ local function CloseButton(parent)
 	return c
 end
 
--- Main window: dark body, title bar with icon, title and version, close button. Escape closes it.
+-- Main window: body, title bar with icon, title and version, close button. Escape closes it.
 function S.Window(name, title, icon, version, w, h)
 	local f = CreateFrame("Frame", name, UIParent)
 	f:SetSize(w, h)
@@ -72,7 +305,11 @@ function S.Window(name, title, icon, version, w, h)
 	f:SetMovable(true)
 	f:SetClampedToScreen(true)
 	f:EnableMouse(true)
-	S.Panel(f)
+	f.goodmensUI = true
+	local bg = f:CreateTexture(nil, "BACKGROUND", nil, -8)
+	bg:SetAllPoints()
+	f.bg = bg
+	S.Border(f, 0, 0, 0, 1)
 	local head = CreateFrame("Frame", nil, f)
 	head:SetPoint("TOPLEFT", 1, -1)
 	head:SetPoint("TOPRIGHT", -1, -1)
@@ -81,21 +318,19 @@ function S.Window(name, title, icon, version, w, h)
 	head:RegisterForDrag("LeftButton")
 	head:SetScript("OnDragStart", function() f:StartMoving() end)
 	head:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
-	local hb = head:CreateTexture(nil, "BACKGROUND")
-	hb:SetAllPoints()
-	Color(hb, HEAD)
-	local accent = head:CreateTexture(nil, "BORDER")
-	accent:SetPoint("BOTTOMLEFT"); accent:SetPoint("BOTTOMRIGHT"); accent:SetHeight(1)
-	accent:SetColorTexture(S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.55)
+	f.headBg = head:CreateTexture(nil, "BACKGROUND")
+	f.headBg:SetAllPoints()
+	f.headLine = head:CreateTexture(nil, "BORDER")
+	f.headLine:SetPoint("BOTTOMLEFT"); f.headLine:SetPoint("BOTTOMRIGHT"); f.headLine:SetHeight(1)
 	local ic = head:CreateTexture(nil, "ARTWORK")
 	ic:SetSize(20, 20)
 	ic:SetPoint("LEFT", 9, 0)
 	ic:SetTexture(icon)
 	ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-	local t = head:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	local t = TrackFont(head:CreateFontString(nil, "OVERLAY", "GameFontNormal"), "GameFontNormal")
 	t:SetPoint("LEFT", ic, "RIGHT", 8, 0)
 	t:SetText(title)
-	local v = head:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	local v = TrackFont(head:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"), "GameFontDisableSmall")
 	v:SetPoint("LEFT", t, "RIGHT", 8, -1)
 	v:SetText(version and ("v" .. version) or "")
 	local close = CloseButton(head)
@@ -104,7 +339,7 @@ function S.Window(name, title, icon, version, w, h)
 	f.head, f.close, f.titleText = head, close, t
 	f:Hide()
 	tinsert(UISpecialFrames, name)
-	return f
+	return Track("window", f)
 end
 
 -- A labelled group of options. card.y is a cursor for laying out rows top to bottom.
@@ -112,20 +347,19 @@ function S.Card(parent, title, x, y, w, h)
 	local c = CreateFrame("Frame", nil, parent)
 	c:SetPoint("TOPLEFT", x, y)
 	c:SetSize(w, h or 100)
-	local bg = c:CreateTexture(nil, "BACKGROUND")
-	bg:SetAllPoints()
-	bg:SetColorTexture(1, 1, 1, 0.035)
+	c.bg = c:CreateTexture(nil, "BACKGROUND")
+	c.bg:SetAllPoints()
 	S.Border(c, 1, 1, 1, 0.08)
 	c.top = y
 	c.y = -12
 	if title then
-		local t = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		local t = TrackFont(c:CreateFontString(nil, "OVERLAY", "GameFontNormal"), "GameFontNormal")
 		t:SetPoint("TOPLEFT", 12, -10)
 		t:SetText(title)
 		c.title = t
 		c.y = -34
 	end
-	return c
+	return Track("card", c)
 end
 
 -- Takes the next row of height h from a card; returns its y.
@@ -142,7 +376,7 @@ function S.Fit(card, pad) card:SetHeight(-card.y + (pad or 6)) end
 function S.Below(card, gap) return card.top - card:GetHeight() - (gap or 10) end
 
 function S.Text(parent, text, x, y, font, width)
-	local l = parent:CreateFontString(nil, "OVERLAY", font or "GameFontHighlight")
+	local l = TrackFont(parent:CreateFontString(nil, "OVERLAY", font or "GameFontHighlight"), font or "GameFontHighlight")
 	l:SetPoint("TOPLEFT", x, y)
 	l:SetJustifyH("LEFT")
 	if width then l:SetWidth(width) end
@@ -160,21 +394,14 @@ end
 function S.Button(parent, text, w, h, primary)
 	local b = CreateFrame("Button", nil, parent)
 	b:SetSize(w, h or 22)
-	local bg = b:CreateTexture(nil, "BACKGROUND")
-	bg:SetAllPoints()
-	if primary then
-		bg:SetColorTexture(0.42, 0.31, 0.02, 1)
-		S.Border(b, 0.85, 0.66, 0.1, 1)
-	else
-		bg:SetColorTexture(0.15, 0.15, 0.18, 1)
-		S.Border(b, LINE[1], LINE[2], LINE[3], 1)
-	end
-	b.bg = bg
+	b.bg = b:CreateTexture(nil, "BACKGROUND")
+	b.bg:SetAllPoints()
+	b.primary = primary
 	local hl = b:CreateTexture(nil, "HIGHLIGHT")
 	hl:SetAllPoints()
 	hl:SetColorTexture(1, 1, 1, 0.09)
 	b:SetHighlightTexture(hl)
-	local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	local fs = TrackFont(b:CreateFontString(nil, "OVERLAY", "GameFontHighlight"), "GameFontHighlight")
 	fs:SetPoint("CENTER")
 	b:SetFontString(fs)
 	b:SetNormalFontObject("GameFontHighlight")
@@ -182,7 +409,7 @@ function S.Button(parent, text, w, h, primary)
 	b:SetDisabledFontObject("GameFontDisable")
 	b:SetPushedTextOffset(0, -1)
 	b:SetText(text or "")
-	return b
+	return Track("button", b)
 end
 
 -- Tick box with its label; the label is clickable too. c.label is the text.
@@ -190,10 +417,8 @@ function S.Check(parent, label, x, y)
 	local c = CreateFrame("CheckButton", nil, parent)
 	c:SetSize(16, 16)
 	if x then c:SetPoint("TOPLEFT", x, y - 4) end
-	local bg = c:CreateTexture(nil, "BACKGROUND")
-	bg:SetAllPoints()
-	bg:SetColorTexture(0.02, 0.02, 0.03, 1)
-	S.Border(c, 0.36, 0.36, 0.42, 1)
+	c.bg = c:CreateTexture(nil, "BACKGROUND")
+	c.bg:SetAllPoints()
 	local tick = c:CreateTexture(nil, "ARTWORK")
 	tick:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
 	tick:SetSize(22, 22)
@@ -203,7 +428,7 @@ function S.Check(parent, label, x, y)
 	hl:SetAllPoints()
 	hl:SetColorTexture(1, 1, 1, 0.14)
 	c:SetHighlightTexture(hl)
-	local t = c:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	local t = TrackFont(c:CreateFontString(nil, "OVERLAY", "GameFontHighlight"), "GameFontHighlight")
 	t:SetPoint("LEFT", c, "RIGHT", 8, 0)
 	t:SetJustifyH("LEFT")
 	c.label = t
@@ -212,7 +437,7 @@ function S.Check(parent, label, x, y)
 		c:SetHitRectInsets(0, -((t:GetStringWidth() or 100) + 10), -4, -4)
 	end
 	c:SetLabel(label or "")
-	return c
+	return Track("check", c)
 end
 
 -- Text box
@@ -223,14 +448,12 @@ function S.Edit(parent, w, h)
 	e:SetTextInsets(8, 8, 0, 0)
 	e:SetAutoFocus(false)
 	e:SetMaxLetters(80)
-	local bg = e:CreateTexture(nil, "BACKGROUND")
-	bg:SetAllPoints()
-	bg:SetColorTexture(0.02, 0.02, 0.03, 1)
-	S.Border(e, LINE[1], LINE[2], LINE[3], 1)
+	e.bg = e:CreateTexture(nil, "BACKGROUND")
+	e.bg:SetAllPoints()
 	e:HookScript("OnEditFocusGained", function(self) S.Border(self, S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.8) end)
-	e:HookScript("OnEditFocusLost", function(self) S.Border(self, LINE[1], LINE[2], LINE[3], 1) end)
+	e:HookScript("OnEditFocusLost", function(self) Edge(self, T().line) end)
 	e:SetScript("OnEscapePressed", e.ClearFocus)
-	return e
+	return Track("edit", e)
 end
 
 -- "Label          [<]  value  [>]" on one row of a card
@@ -240,7 +463,7 @@ function S.Stepper(parent, label, x, y, w, get, change)
 	plus:SetPoint("TOPLEFT", x + w - 22, y - 2)
 	local minus = S.Button(parent, "<", 22, 20)
 	minus:SetPoint("TOPLEFT", x + w - 22 - 4 - 104 - 4 - 22, y - 2)
-	local val = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	local val = TrackFont(parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight"), "GameFontHighlight")
 	val:SetPoint("LEFT", minus, "RIGHT", 4, 0)
 	val:SetWidth(104)
 	local function show() val:SetText(get()) end
@@ -261,21 +484,20 @@ function S.Slider(parent, w, lo, hi, step, name)
 	local fill = s:CreateTexture(nil, "ARTWORK")
 	fill:SetPoint("LEFT")
 	fill:SetHeight(4)
-	fill:SetColorTexture(S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.85)
 	local thumb = s:CreateTexture(nil, "OVERLAY")
 	thumb:SetSize(10, 18)
-	thumb:SetColorTexture(1, 0.9, 0.45, 1)
 	s:SetThumbTexture(thumb)
+	s.fill, s.thumb = fill, thumb
 	s:SetMinMaxValues(lo, hi)
 	s:SetValueStep(step or 1)
 	if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
-	local function paint(v) fill:SetWidth(math.max(1, (v - lo) / (hi - lo) * w)) end
+	local function paintFill(v) fill:SetWidth(math.max(1, (v - lo) / (hi - lo) * w)) end
 	s:SetScript("OnValueChanged", function(self, v, user)
-		paint(v)
+		paintFill(v)
 		if self.onChange and not self.quiet then self.onChange(v) end
 	end)
-	function s.Set(_, v) s.quiet = true; s:SetValue(v); paint(v); s.quiet = false end
-	return s
+	function s.Set(_, v) s.quiet = true; s:SetValue(v); paintFill(v); s.quiet = false end
+	return Track("slider", s)
 end
 
 -- A row of tabs under the title bar; each tab has its own page frame. Returns pages, select(i).
@@ -298,7 +520,7 @@ function S.Tabs(win, names, top, bottom)
 	end
 	for i, name in ipairs(names) do
 		local b = CreateFrame("Button", nil, win)
-		local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		local fs = TrackFont(b:CreateFontString(nil, "OVERLAY", "GameFontNormal"), "GameFontNormal")
 		fs:SetPoint("CENTER", 0, 1)
 		fs:SetText(name)
 		b.text = fs
@@ -311,7 +533,7 @@ function S.Tabs(win, names, top, bottom)
 		b:SetHighlightTexture(hl)
 		local u = b:CreateTexture(nil, "ARTWORK")
 		u:SetPoint("BOTTOMLEFT", 6, 0); u:SetPoint("BOTTOMRIGHT", -6, 0); u:SetHeight(2)
-		u:SetColorTexture(S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 1)
+		Track("accent", u)
 		b.under = u
 		b:SetScript("OnClick", function() select(i) end)
 		tabs[i] = b
@@ -322,6 +544,9 @@ function S.Tabs(win, names, top, bottom)
 		pages[i] = p
 	end
 	select(1)
+	-- a new accent recolours the selected tab's text too
+	local before = S.onLook
+	S.onLook = function() if before then before() end; select(win.tab or 1) end
 	return pages, select
 end
 
@@ -331,13 +556,12 @@ function S.Footer(win, h)
 	f:SetPoint("BOTTOMLEFT", 1, 1)
 	f:SetPoint("BOTTOMRIGHT", -1, 1)
 	f:SetHeight(h or 40)
-	local bg = f:CreateTexture(nil, "BACKGROUND")
-	bg:SetAllPoints()
-	bg:SetColorTexture(0, 0, 0, 0.25)
+	f.bg = f:CreateTexture(nil, "BACKGROUND")
+	f.bg:SetAllPoints()
 	local line = f:CreateTexture(nil, "BORDER")
 	line:SetPoint("TOPLEFT"); line:SetPoint("TOPRIGHT"); line:SetHeight(1)
 	line:SetColorTexture(1, 1, 1, 0.08)
-	return f
+	return Track("footer", f)
 end
 
 -- Plain tooltip on hover
@@ -349,6 +573,67 @@ function S.Tip(widget, title, text)
 		GameTooltip:Show()
 	end)
 	widget:HookScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+-- A drop-down: a button showing the current choice; click it for the list.
+-- items = { {key=, name=}, ... }; get() returns the current key; set(key) is called on a pick.
+local ddMenu
+function S.Dropdown(parent, w, items, get, set)
+	local b = S.Button(parent, "", w, 22)
+	local function show()
+		local cur = get()
+		local name = items[1] and items[1].name or ""
+		for _, it in ipairs(items) do if it.key == cur then name = it.name end end
+		b:SetText(name .. "  |cffffd100v|r")
+	end
+	b:SetScript("OnClick", function(self)
+		if not ddMenu then
+			ddMenu = CreateFrame("Frame", nil, UIParent)
+			ddMenu:SetFrameStrata("FULLSCREEN_DIALOG")
+			ddMenu:EnableMouse(true)
+			S.Panel(ddMenu, 1)
+			ddMenu.rows = {}
+			ddMenu:Hide()
+		end
+		local m = ddMenu
+		if m:IsShown() and m.owner == self then m:Hide() return end
+		m.owner = self
+		for _, r in ipairs(m.rows) do r:Hide() end
+		local cur = get()
+		for i, it in ipairs(items) do
+			local r = m.rows[i]
+			if not r then
+				r = CreateFrame("Button", nil, m)
+				r:SetHeight(20)
+				local hl = r:CreateTexture(nil, "HIGHLIGHT")
+				hl:SetAllPoints()
+				hl:SetColorTexture(1, 0.82, 0, 0.15)
+				r.text = TrackFont(r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), "GameFontHighlightSmall")
+				r.text:SetPoint("LEFT", 20, 0)
+				r.tick = r:CreateTexture(nil, "OVERLAY")
+				r.tick:SetSize(14, 14)
+				r.tick:SetPoint("LEFT", 3, 0)
+				r.tick:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+				m.rows[i] = r
+			end
+			r:SetWidth(w - 8)
+			r:ClearAllPoints()
+			r:SetPoint("TOPLEFT", 4, -4 - (i - 1) * 20)
+			r.text:SetText(it.name)
+			r.tick:SetShown(it.key == cur)
+			r.key = it.key
+			r:SetScript("OnClick", function() m:Hide(); set(it.key); show() end)
+			r:Show()
+		end
+		m:SetSize(w, #items * 20 + 8)
+		m:ClearAllPoints()
+		m:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
+		m:Show()
+	end)
+	b:HookScript("OnHide", function() if ddMenu and ddMenu.owner == b then ddMenu:Hide() end end)
+	b.Refresh = show
+	show()
+	return b
 end
 
 ------------------------------------------------------------------------
@@ -454,7 +739,23 @@ local function BuildMore(selfName)
 	close:SetPoint("TOPRIGHT", -4, -6)
 	close:SetScript("OnClick", function() p:Hide() end)
 	local W = 360
-	local y = -40
+	-- the look of every good mens add-on: theme and accent colour (saved, shared by all of them)
+	local look = CreateFrame("Frame", nil, p)
+	look:SetPoint("TOPLEFT", 10, -36)
+	look:SetSize(W - 20, 52)
+	local lbg = look:CreateTexture(nil, "BACKGROUND")
+	lbg:SetAllPoints()
+	lbg:SetColorTexture(1, 1, 1, 0.035)
+	S.Text(look, "Look", 10, -8, "GameFontNormalSmall")
+	S.Text(look, "Accent", 188, -8, "GameFontNormalSmall")
+	local themeDD = S.Dropdown(look, 170, S.THEMES, function() return (S.LookKeys()) end, function(k) S.SetLook(k, nil) end)
+	themeDD:SetPoint("TOPLEFT", 8, -24)
+	local accentDD = S.Dropdown(look, 150, S.ACCENTS, function() return select(2, S.LookKeys()) end, function(k) S.SetLook(nil, k) end)
+	accentDD:SetPoint("TOPLEFT", 184, -24)
+	S.Tip(themeDD, "Look", "Changes the look of every good mens add-on at once: Modern, Pixel (ElvUI style), Classic (Blizzard), Glass, Midnight or Stone.")
+	S.Tip(accentDD, "Accent colour", "The highlight colour for titles, tabs, sliders and buttons, in every good mens add-on.")
+	p.lookDD = { themeDD, accentDD }
+	local y = -96
 	p.rows = {}
 	for _, a in ipairs(S.FAMILY) do
 		if a.addon ~= selfName then
@@ -516,7 +817,10 @@ local function BuildMore(selfName)
 	y = y - 58
 	S.Note(p, "Made by good mens (Mephz on WoW Forever)", 14, y - 6)
 	p:SetSize(W, -y + 30)
-	p:SetScript("OnShow", function() for _, r in ipairs(p.rows) do r.Update() end end)
+	p:SetScript("OnShow", function()
+		for _, r in ipairs(p.rows) do r.Update() end
+		for _, d in ipairs(p.lookDD) do d.Refresh() end
+	end)
 	p:SetScript("OnHide", function() if copyBox then copyBox:Hide() end end)
 	p:Hide()
 	return p
