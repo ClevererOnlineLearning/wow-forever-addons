@@ -23,6 +23,7 @@ QA.MARK_MERGE = 20       -- markers closer than this (pixels) become one, number
 QA.MARK_SHIFT = 14       -- step numbers sit this far up and right of the spot, off Questie's icon
 QA.NEAR_ROWS = 4         -- "Nearby" lines at the top of the guide window
 QA.NEAR_YARDS = 400      -- mobs closer than this are shown bright, further ones grey
+QA.NEAR_EVERY = 10       -- seconds between "Nearby" updates (and within a second of a quest log change)
 
 local needs              -- what your log quests still need, mob by mob (rebuilt when the log changes)
 
@@ -928,7 +929,7 @@ local function BuildGuide()
 	g.title:SetPoint("TOPLEFT", 8, -7)
 	g.title:SetPoint("RIGHT", -100, 0)
 	g.title:SetJustifyH("LEFT")
-	-- what's nearby (kept up to date every second while the window is open), then the steps
+	-- what's nearby (updated every NEAR_EVERY seconds while the window is open), then the steps
 	g.near = {}
 	for i = 1, QA.NEAR_ROWS do
 		local fs = g:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -941,7 +942,7 @@ local function BuildGuide()
 	g:SetScript("OnUpdate", function(f, elapsed)
 		f.nearWait = (f.nearWait or 0) - (elapsed or 0)
 		if f.nearWait > 0 then return end
-		f.nearWait = 1
+		f.nearWait = QA.NEAR_EVERY
 		Safe(QA.ZoneNearbyUpdate)
 	end)
 	g.rows = {}
@@ -1186,7 +1187,8 @@ zev:SetScript("OnEvent", function(_, event, a1, a2)
 		end
 		return
 	end
-	needs = nil -- the log changed: what's still needed is worked out again
+	needs = nil -- the log changed: what's still needed is worked out again, and shown within a second
+	if QA.guide and (QA.guide.nearWait or 0) > 1 then QA.guide.nearWait = 1 end
 	if not QA.zone then return end
 	if event == "QUEST_TURNED_IN" and type(a1) == "number" then QA.turnedIn[a1] = true end
 	if event == "QUEST_LOG_UPDATE" then
