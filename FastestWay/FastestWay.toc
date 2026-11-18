@@ -5,7 +5,7 @@
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: GPL-3.0-or-later. Walking router and maps from Shortest Path Forever by Cillian Berragan (see CREDITS.md)
 ## OptionalDeps: Questie, QuestieDB
-## SavedVariables: FastestWayDB
+## SavedVariables: FastestWayDB, FastestWayLook
 ## SavedVariablesPerCharacter: FastestWayCharDB
 ## IconTexture: Interface\Icons\INV_Misc_Map_01
 Libs\LibStub.lua

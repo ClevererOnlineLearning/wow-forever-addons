@@ -4,7 +4,7 @@
 ## Version: 1.6
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: All Rights Reserved (free to use; changes for your own use are fine; please don't re-upload)
-## SavedVariables: LootFlareDB
+## SavedVariables: LootFlareDB, LootFlareLook
 ## IconTexture: Interface\Icons\INV_Misc_Gem_Pearl_04
 Skin.lua
 LootFlare.lua
