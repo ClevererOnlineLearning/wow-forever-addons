@@ -508,17 +508,25 @@ function QA.ObjectiveAreas(questId, noHandIn)
 					local key = map .. ":" .. math.floor(x / QA.AREA_CELL) .. ":" .. math.floor(y / QA.AREA_CELL)
 					local c = cells[key]
 					if not c then
-						c = { map = map, sx = 0, sy = 0, count = 0, targets = {}, has = {} }
+						c = { map = map, sx = 0, sy = 0, count = 0, targets = {}, has = {}, pts = {} }
 						cells[key] = c
 						list[#list + 1] = c
 					end
 					c.sx, c.sy, c.count = c.sx + x, c.sy + y, c.count + 1
+					c.pts[#c.pts + 1] = { x, y }
 					if not c.has[label] then c.has[label] = true; c.targets[#c.targets + 1] = label end
 				end
 			end
 		end
 	end
-	for _, c in ipairs(list) do c.x, c.y = c.sx / c.count, c.sy / c.count end
+	-- each area sits on the real spawn nearest its middle (never in an empty spot between two groups)
+	for _, c in ipairs(list) do
+		local mx, my, bd = c.sx / c.count, c.sy / c.count, nil
+		for _, pt in ipairs(c.pts) do
+			local d = (pt[1] - mx) ^ 2 + (pt[2] - my) ^ 2
+			if not bd or d < bd then c.x, c.y, bd = pt[1], pt[2], d end
+		end
+	end
 	table.sort(list, function(a, b)
 		if a.count ~= b.count then return a.count > b.count end
 		if a.map ~= b.map then return a.map < b.map end
