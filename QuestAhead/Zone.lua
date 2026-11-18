@@ -46,9 +46,29 @@ function QA.PlayerLevel()
 	return Call(Mod("QuestiePlayer"), "GetPlayerLevel") or (UnitLevel and UnitLevel("player")) or 1
 end
 
+local function CharKey()
+	local n = UnitName and UnitName("player")
+	local r = GetRealmName and GetRealmName()
+	return (n or "?") .. "-" .. (r or "?")
+end
+
+-- quests you've handed in, kept per character: repeatables never show as completed in the game's own list
+local function TurnedInSaved()
+	QuestAheadDB = type(QuestAheadDB) == "table" and QuestAheadDB or {}
+	QuestAheadDB.turnedIn = type(QuestAheadDB.turnedIn) == "table" and QuestAheadDB.turnedIn or {}
+	local k = CharKey()
+	QuestAheadDB.turnedIn[k] = type(QuestAheadDB.turnedIn[k]) == "table" and QuestAheadDB.turnedIn[k] or {}
+	return QuestAheadDB.turnedIn[k]
+end
+
+function QA.RememberTurnIn(id)
+	QA.turnedIn[id] = true
+	TurnedInSaved()[id] = true
+end
+
 QA.turnedIn = {}
 local function Done(id)
-	if QA.turnedIn[id] then return true end
+	if QA.turnedIn[id] or TurnedInSaved()[id] then return true end
 	local char = Questie and Questie.db and Questie.db.char
 	return (char and type(char.complete) == "table" and char.complete[id]) and true or false
 end
@@ -307,6 +327,26 @@ end
 
 -- Which quests -------------------------------------------------------------------------------------
 
+-- the same quest again: a follow-on with the same name and giver as the quest it follows
+local function Giver(id)
+	local s = Q(id, "startedBy")
+	local g = type(s) == "table" and (type(s[1]) == "table" and s[1][1] or (type(s[2]) == "table" and s[2][1])) or nil
+	return g
+end
+function QA.IsRepeatVersion(id)
+	local name, giver = Q(id, "name"), Giver(id)
+	if not name then return false end
+	local pre = {}
+	for _, k in ipairs({ "preQuestSingle", "preQuestGroup" }) do
+		local t = Q(id, k)
+		if type(t) == "table" then for _, x in ipairs(t) do if type(x) == "number" and x > 0 then pre[#pre + 1] = x end end end
+	end
+	for _, x in ipairs(pre) do
+		if Q(x, "name") == name and Giver(x) == giver then return true end
+	end
+	return false
+end
+
 -- rules that don't depend on other quests
 local function Eligible(id, level)
 	if not QA.Applicable(id) then return false end
@@ -403,7 +443,7 @@ function QA.ZoneQuests(map)
 	local cands = {}
 	local ptrs = db and db.QuestPointers
 	for id in pairs(type(ptrs) == "table" and ptrs or {}) do
-		if not log[id] and not later[id] and not Done(id) and PersonOn(Q(id, "startedBy"), map) and Eligible(id, level) then
+		if not log[id] and not later[id] and not Done(id) and PersonOn(Q(id, "startedBy"), map) and Eligible(id, level) and not QA.IsRepeatVersion(id) then
 			cands[#cands + 1] = id
 		end
 	end
@@ -579,12 +619,6 @@ function QA.BuildZoneRoute(map, quests, start, pull, hpull)
 end
 
 -- Plan, progress -------------------------------------------------------------------------------------
-
-local function CharKey()
-	local n = UnitName and UnitName("player")
-	local r = GetRealmName and GetRealmName()
-	return (n or "?") .. "-" .. (r or "?")
-end
 
 -- quests you set aside with "Later" (per character): { [questID] = true }
 function QA.LaterSet()
@@ -1317,10 +1351,10 @@ zev:SetScript("OnEvent", function(_, event, a1, a2)
 		end
 		return
 	end
+	if event == "QUEST_TURNED_IN" and type(a1) == "number" then QA.RememberTurnIn(a1) end
 	needs = nil -- the log changed: what's still needed is worked out again, and shown within a second
 	if QA.guide and (QA.guide.nearWait or 0) > 1 then QA.guide.nearWait = 1 end
 	if not QA.zone then return end
-	if event == "QUEST_TURNED_IN" and type(a1) == "number" then QA.turnedIn[a1] = true end
 	if event == "QUEST_LOG_UPDATE" then
 		-- comes in bursts: once a second is plenty
 		if pendingRefresh or not (C_Timer and C_Timer.After) then return end
