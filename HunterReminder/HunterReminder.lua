@@ -78,24 +78,28 @@ local function IsNeverSecret(id)
 	return neverSecret[id]
 end
 
--- Full scan; returns nil if the client refuses (secret/tainted).
+-- Full scan; returns nil if the client refuses (secret/tainted). Hidden buff names are skipped
+-- (not the end of the list); the second value says whether any were hidden.
 local function PlayerBuffNames()
+	local hidden = false
 	local ok, names = pcall(function()
 		local out = {}
 		for i = 1, 40 do
-			local name
+			local name, any
 			if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
 				local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
+				any = aura ~= nil
 				name = aura and aura.name
 			elseif UnitBuff then
 				name = UnitBuff("player", i)
+				any = name ~= nil
 			end
-			if not name or isSecret(name) then break end
-			out[name] = true
+			if not any then break end
+			if name == nil or isSecret(name) then hidden = true else out[name] = true end
 		end
 		return out
 	end)
-	return ok and names or nil
+	return ok and names or nil, hidden
 end
 
 -- Per-spell lookup for NeverSecret spells; returns true/false, or nil if not allowed.
@@ -119,9 +123,38 @@ end
 
 local known = {} -- last known present/absent per tracked key (used while secret)
 
+-- Names in your spellbook, rebuilt when your spells change.
+local book
+local function BookNames()
+	if book then return book end
+	book = {}
+	pcall(function()
+		if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines and C_SpellBook.GetSpellBookItemName then
+			local bank = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
+			for i = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+				local line = C_SpellBook.GetSpellBookSkillLineInfo(i)
+				local off, n = line and line.itemIndexOffset or 0, line and line.numSpellBookItems or 0
+				for j = off + 1, off + n do
+					local name = C_SpellBook.GetSpellBookItemName(j, bank)
+					if name and not isSecret(name) then book[name] = true end
+				end
+			end
+		elseif GetNumSpellTabs and GetSpellTabInfo and GetSpellBookItemName then
+			for i = 1, GetNumSpellTabs() do
+				local _, _, off, n = GetSpellTabInfo(i)
+				for j = (off or 0) + 1, (off or 0) + (n or 0) do
+					local name = GetSpellBookItemName(j, BOOKTYPE_SPELL or "spell")
+					if name and not isSecret(name) then book[name] = true end
+				end
+			end
+		end
+	end)
+	return book
+end
+
 local function KnowsAny(t)
 	for _, id in ipairs(t.ranks) do if IsKnown(id) then return true end end
-	return false
+	return t.name ~= nil and BookNames()[t.name] == true
 end
 
 local function HasBuff(t, buffs)
@@ -173,14 +206,16 @@ local function MakeIcon(t, index)
 	f.label = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	f.label:SetPoint("TOP", f, "BOTTOM", 0, -2)
 	f.label:SetTextColor(1, 0.3, 0.3)
-	-- Drag via the icons while unlocked.
+	-- Drag each icon on its own while unlocked.
 	f:EnableMouse(false)
+	f:SetMovable(true)
+	f:SetClampedToScreen(true)
 	f:RegisterForDrag("LeftButton")
-	f:SetScript("OnDragStart", function() anchor:StartMoving() end)
-	f:SetScript("OnDragStop", function()
-		anchor:StopMovingOrSizing()
-		local p, _, rp, x, y = anchor:GetPoint()
-		db.point = { p, "UIParent", rp, x, y }
+	f:SetScript("OnDragStart", function(self) self:StartMoving() end)
+	f:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+		local p, _, rp, x, y = self:GetPoint()
+		if p then db.pos[t.key] = { p, rp, x, y } end
 	end)
 	f:Hide()
 	f.t = t
@@ -188,14 +223,22 @@ local function MakeIcon(t, index)
 	return f
 end
 
+-- Where each icon goes: its own saved spot, else side by side around the old shared spot
+-- (db.point), which is where both icons used to sit.
+local GAP = 12
+local function DefaultSpot(index)
+	local p = db.point or DEFAULTS.point
+	local x = (index - 1.5) * (ICON + GAP)
+	return { p[1], p[3], (p[4] or 0) + x, p[5] or 0 }
+end
+
 local function Layout()
-	local shown = {}
-	for _, f in ipairs(icons) do if f:IsShown() then shown[#shown + 1] = f end end
-	local gap = 12
-	local total = #shown * ICON + (#shown - 1) * gap
-	for i, f in ipairs(shown) do
+	db.pos = type(db.pos) == "table" and db.pos or {}
+	for i, f in ipairs(icons) do
+		local sp = db.pos[f.t.key]
+		if type(sp) ~= "table" or not sp[1] then sp = DefaultSpot(i); db.pos[f.t.key] = sp end
 		f:ClearAllPoints()
-		f:SetPoint("CENTER", anchor, "CENTER", -total / 2 + ICON / 2 + (i - 1) * (ICON + gap), 0)
+		f:SetPoint(sp[1], UIParent, sp[2], sp[3], sp[4])
 	end
 end
 
@@ -207,15 +250,17 @@ local testUntil = 0
 local elapsedTotal, sinceCheck = 0, 0
 
 local function Refresh()
-	local buffs = (not AurasSecret()) and PlayerBuffNames() or nil
+	local buffs, hidden
+	if not AurasSecret() then buffs, hidden = PlayerBuffNames() end
 	local inCombat = InCombatLockdown() or UnitAffectingCombat("player")
 	local testing = GetTime() < testUntil
-	local changed = false
 	for _, f in ipairs(icons) do
 		local t = f.t
 		local present
 		if buffs then
 			present = HasBuff(t, buffs)
+			-- not seen, but some buffs were hidden: it may be one of those, so don't guess
+			if not present and hidden then present = HasBySpellID(t) end
 		else
 			present = HasBySpellID(t)
 			if present == nil then present = known[t.key] end
@@ -229,12 +274,8 @@ local function Refresh()
 			PlaySound((SOUNDKIT and SOUNDKIT.RAID_WARNING) or 8959, "Master")
 		end
 		wasMissing[t.key] = missing and remind
-		if show ~= f:IsShown() then
-			f:SetShown(show)
-			changed = true
-		end
+		if show ~= f:IsShown() then f:SetShown(show) end
 	end
-	if changed then Layout() end
 end
 
 anchor:SetScript("OnUpdate", function(self, elapsed)
@@ -254,14 +295,13 @@ end)
 local function ApplyLook()
 	anchor:SetScale(tonumber(db.scale) or 1)
 	anchor:ClearAllPoints()
-	local p = db.point
-	anchor:SetPoint(p[1], UIParent, p[3], p[4], p[5])
+	anchor:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 	for _, f in ipairs(icons) do
 		f:EnableMouse(not db.locked)
 		f.label:SetText(db.locked and ("No " .. f.t.name) or ("Drag me\n" .. f.t.name))
 	end
-	Refresh()
 	Layout()
+	Refresh()
 end
 
 ------------------------------------------------------------------------
@@ -305,6 +345,10 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2, arg3)
 		self:RegisterEvent("PLAYER_DEAD")
 		self:RegisterEvent("PLAYER_TARGET_CHANGED")
 		self:RegisterEvent("PLAYER_REGEN_ENABLED")
+		self:RegisterEvent("SPELLS_CHANGED")
+	elseif event == "SPELLS_CHANGED" then
+		book = nil
+		Refresh()
 	elseif event == "PLAYER_TARGET_CHANGED" or event == "PLAYER_REGEN_ENABLED" then
 		HR.AutoTrack()
 	elseif event == "PLAYER_DEAD" then
@@ -546,11 +590,35 @@ local MODE_TEXT = { always = "|cff00ff00always|r", combat = "|cffffd100in combat
 local MODE_NEXT = { always = "combat", combat = "off", off = "always" }
 HR.MODE_NEXT = MODE_NEXT
 
+-- /hrem why: for each reminder, why it is (or isn't) showing right now.
+function HR.Why()
+	local buffs, hidden
+	if not AurasSecret() then buffs, hidden = PlayerBuffNames() end
+	local inCombat = InCombatLockdown() or UnitAffectingCombat("player")
+	for _, f in ipairs(icons) do
+		local t = f.t
+		local mode = db[t.key .. "Mode"] or "always"
+		local why
+		if not KnowsAny(t) then why = "you haven't learned it (not in your spellbook)"
+		elseif mode == "off" then why = "turned off (/hrem " .. t.key .. ")"
+		elseif UnitIsDeadOrGhost("player") then why = "you're dead"
+		elseif UnitOnTaxi and UnitOnTaxi("player") then why = "you're on a flight"
+		elseif mode == "combat" and not inCombat then why = "set to remind in combat only"
+		elseif db.hideMounted and IsMounted and IsMounted() then why = "you're mounted (/hrem mount)"
+		elseif not inCombat and not db.showResting and IsResting() then why = "you're in a city or inn (/hrem rest to remind there too)"
+		elseif buffs and HasBuff(t, buffs) then why = "it's on"
+		elseif not buffs then why = "buffs can't be read right now (in combat); last known: " .. (known[t.key] == nil and "unknown" or known[t.key] and "on" or "off")
+		elseif hidden and known[t.key] ~= false then why = "some of your buffs are hidden from add-ons; waiting until it can tell"
+		else why = "|cffff5555missing - the reminder should be showing|r" end
+		Chat("|cffffffff" .. t.name .. "|r: " .. why .. (f:IsShown() and " (showing)" or ""))
+	end
+end
+
 function HR.Refresh() Refresh() end
 function HR.ApplyLook() ApplyLook() end
 function HR.Test() testUntil = GetTime() + 5; Refresh() end
 function HR.ResetPosition()
-	db.point = { "CENTER", "UIParent", "CENTER", 0, 160 }; db.scale = 1; ApplyLook()
+	db.point = { "CENTER", "UIParent", "CENTER", 0, 160 }; db.pos = {}; db.scale = 1; ApplyLook()
 end
 
 SLASH_HUNTERREMINDER1 = "/hrem"
@@ -558,7 +626,7 @@ SLASH_HUNTERREMINDER2 = "/hunterreminder"
 SlashCmdList.HUNTERREMINDER = function(msg)
 	local cmd, rest = (msg or ""):lower():match("^%s*(%S*)%s*(.-)%s*$")
 	if cmd == "unlock" or cmd == "move" then
-		db.locked = false; ApplyLook(); Chat("unlocked - drag the icons, then /hrem lock.")
+		db.locked = false; ApplyLook(); Chat("unlocked - drag each icon where you want it, then /hrem lock.")
 	elseif cmd == "lock" then
 		db.locked = true; ApplyLook(); Chat("locked.")
 	elseif cmd == "rest" then
@@ -583,6 +651,8 @@ SlashCmdList.HUNTERREMINDER = function(msg)
 		HR.SetTrackLock(not db.trackLocked)
 	elseif cmd == "check" then
 		HR.CheckTracking()
+	elseif cmd == "why" then
+		HR.Why()
 	elseif cmd == "feign" then
 		if rest == "test" then HR.FeignTest() return end
 		db.feignWarn = not db.feignWarn; Chat("warn when Feign Death is resisted: " .. OnOff(db.feignWarn))
@@ -594,7 +664,8 @@ SlashCmdList.HUNTERREMINDER = function(msg)
 		Chat("commands:  (/hrem on its own opens the settings window)")
 		print("  /hrem trueshot always|combat|off  (now " .. MODE_TEXT[db.trueshotMode] .. ")")
 		print("  /hrem hawk always|combat|off  (now " .. MODE_TEXT[db.hawkMode] .. ")")
-		print("  /hrem unlock | lock  - move the icons")
+		print("  /hrem unlock | lock  - move the icons (each one on its own)")
+		print("  /hrem why  - why a reminder is or isn't showing")
 		print("  /hrem test  - preview for 5s      /hrem scale 1.2  - size")
 		print("  /hrem rest  - also remind in cities/inns (" .. OnOff(db.showResting) .. ")")
 		print("  /hrem mount  - hide while mounted (" .. OnOff(db.hideMounted) .. ")")
