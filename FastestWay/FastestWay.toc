@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Fastest Way To
 ## Notes: Tells you the fastest way to get somewhere: which flights, boats, zeppelins and zones to run through, with real walking paths. /fw
-## Version: 0.3.2
+## Version: 0.3.3
 ## Author: good mens (Mephz on WoW Forever)
 ## X-License: GPL-3.0-or-later. Walking router and maps from Shortest Path Forever by Cillian Berragan (see CREDITS.md)
 ## OptionalDeps: Questie, QuestieDB

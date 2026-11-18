@@ -385,6 +385,9 @@ S.FAMILY = {
 	  url = "https://www.curseforge.com/projects/1804008" },
 }
 
+-- Where people can support good mens (shown at the bottom of the panel).
+S.SUPPORT_URL = "https://ko-fi.com/mephzgoodmens"
+
 local function AddonState(name)
 	local loaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
 	local info = (C_AddOns and C_AddOns.GetAddOnInfo) or GetAddOnInfo
@@ -402,7 +405,7 @@ S.AddonState = AddonState
 
 -- A box with the link selected, ready for Ctrl+C (the game can't open web pages itself).
 local copyBox
-local function ShowLink(anchor, title, url)
+local function ShowLink(anchor, title, url, heading)
 	if not copyBox then
 		local p = CreateFrame("Frame", nil, UIParent)
 		p:SetSize(330, 84)
@@ -425,7 +428,7 @@ local function ShowLink(anchor, title, url)
 	end
 	local p = copyBox
 	p.url = url
-	p.title:SetText("Get " .. title)
+	p.title:SetText(heading or ("Get " .. title))
 	p:ClearAllPoints()
 	p:SetPoint("TOP", anchor, "BOTTOM", 0, -6)
 	p:Show()
@@ -491,6 +494,26 @@ local function BuildMore(selfName)
 			y = y - 74
 		end
 	end
+	-- support: these add-ons are free; a link to Ko-fi for anyone who'd like to say thanks
+	local sup = CreateFrame("Frame", nil, p)
+	sup:SetPoint("TOPLEFT", 10, y)
+	sup:SetSize(W - 20, 52)
+	local sbg = sup:CreateTexture(nil, "BACKGROUND")
+	sbg:SetAllPoints()
+	sbg:SetColorTexture(S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.08)
+	S.Border(sup, S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.35)
+	local sic = sup:CreateTexture(nil, "ARTWORK")
+	sic:SetSize(28, 28)
+	sic:SetPoint("LEFT", 10, 0)
+	sic:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
+	sic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	S.Text(sup, "Like these add-ons?", 48, -9, "GameFontNormal")
+	S.Note(sup, "They're free. If they help you, you can buy me a coffee.", 48, -26, W - 20 - 48 - 88)
+	local kofi = S.Button(sup, "Ko-fi", 74, 22)
+	kofi:SetPoint("RIGHT", -10, 0)
+	kofi:SetScript("OnClick", function() ShowLink(kofi, "Ko-fi", S.SUPPORT_URL, "Support good mens on Ko-fi") end)
+	S.Tip(kofi, "Support good mens", "Shows the Ko-fi link to copy. Thank you!")
+	y = y - 58
 	S.Note(p, "Made by good mens (Mephz on WoW Forever)", 14, y - 6)
 	p:SetSize(W, -y + 30)
 	p:SetScript("OnShow", function() for _, r in ipairs(p.rows) do r.Update() end end)
