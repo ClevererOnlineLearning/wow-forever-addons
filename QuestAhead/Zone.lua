@@ -247,8 +247,9 @@ function QA.ZoneQuest(id, map, logEntry)
 			for _, pt in ipairs(SpawnsOn(grp.spawns, map)) do
 				local key = math.floor(pt.x / QA.AREA_CELL) .. ":" .. math.floor(pt.y / QA.AREA_CELL)
 				local c = cells[key]
-				if not c then c = { sx = 0, sy = 0, n = 0 }; cells[key] = c end
+				if not c then c = { sx = 0, sy = 0, n = 0, pts = {} }; cells[key] = c end
 				c.sx, c.sy, c.n = c.sx + pt.x, c.sy + pt.y, c.n + 1
+				c.pts[#c.pts + 1] = pt
 			end
 			local list = {}
 			for _, c in pairs(cells) do list[#list + 1] = c end
@@ -256,7 +257,14 @@ function QA.ZoneQuest(id, map, logEntry)
 			for i = 1, math.min(#list, QA.MAX_AREAS) do
 				local o = byLabel[grp.label]
 				if not o then o = { label = grp.label, cands = {} }; byLabel[grp.label] = o; rec.objectives[#rec.objectives + 1] = o end
-				o.cands[#o.cands + 1] = { x = list[i].sx / list[i].n, y = list[i].sy / list[i].n }
+				-- the real spawn nearest the middle: mobs on two sides of a town must not send you into the town
+				local c = list[i]
+				local mx, my, best, bd = c.sx / c.n, c.sy / c.n, nil, nil
+				for _, pt in ipairs(c.pts) do
+					local d = (pt.x - mx) ^ 2 + (pt.y - my) ^ 2
+					if not bd or d < bd then best, bd = pt, d end
+				end
+				o.cands[#o.cands + 1] = { x = best.x, y = best.y }
 				any = true
 			end
 			if not any and HasSpawns(grp.spawns) then
