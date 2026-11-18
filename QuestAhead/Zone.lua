@@ -15,7 +15,10 @@ local Title, Safe, TAG = QA.Title, QA.Safe, QA.TAG
 QA.ZONE_MAX_QUESTS = 40  -- most quests in one plan
 QA.PICKUP_PULL = 0.6     -- pick-ups count as this much nearer, so a hub's givers are all seen before leaving
 QA.PULLS = { 0.35, 0.6, 1 } -- tried in turn; the shortest route wins
-QA.HANDIN_PULL = 0.5     -- a finished quest's hand-in counts as this much nearer: hand in (XP, log space, follow-ons) before more killing
+QA.HANDIN_PULL = 0.5     -- a finished quest's hand-in counts as this much nearer (default for one route)
+-- hand-in pulls tried with each pick-up pull; the shortest whole route wins, so a hand-in goes early when its
+-- follow-on's work is where you're heading anyway (one trip instead of two), and waits until you pass by when not
+QA.HANDIN_PULLS = { 0.25, 0.5, 1 }
 QA.SAME_SPOT = 0.004     -- closer than this (share of the map) is the same place
 QA.RUN_SPEED = 7         -- yards a second on foot, for the time estimate
 QA.ZONE_ROWS = 12        -- lines in the guide window
@@ -467,8 +470,9 @@ end
 
 -- greedy: from where you are, always the nearest thing you're allowed to do next
 -- stops = { {x, y, actions = { {kind = "pickup"|"work"|"handin", quests = {id...}, targets?, text}, ... }}, ... }
-function QA.BuildZoneRoute(map, quests, start, pull)
+function QA.BuildZoneRoute(map, quests, start, pull, hpull)
 	pull = pull or QA.PICKUP_PULL
+	hpull = hpull or QA.HANDIN_PULL
 	local w, h = ZoneSize(map)
 	local cap = QA.LogCap()
 	local active = 0
@@ -509,7 +513,7 @@ function QA.BuildZoneRoute(map, quests, start, pull)
 		for _, r in ipairs(quests) do
 			if r.picked and not r.finished then
 				if #r.pending == 0 then
-					offer(Dist(pos, r.handin, w, h) * QA.HANDIN_PULL, { kind = "handin", r = r })
+					offer(Dist(pos, r.handin, w, h) * hpull, { kind = "handin", r = r })
 				else
 					for _, o in ipairs(r.pending) do
 						for _, c in ipairs(o.cands) do offer(Dist(pos, c, w, h), { kind = "work", at = c }) end
@@ -631,15 +635,16 @@ function QA.PlanZone(map, quiet)
 	local start = QA.PlayerSpot(map)
 	local stops, travel, away
 	local most
-	for _, pull in ipairs(QA.PULLS) do
-		local s, t, a = QA.BuildZoneRoute(map, found.quests, start, pull)
+	for _, pull in ipairs(QA.PULLS) do for _, hpull in ipairs(QA.HANDIN_PULLS) do
+		local s, t, a = QA.BuildZoneRoute(map, found.quests, start, pull, hpull)
 		for _, id in ipairs(found.later) do
 			a[#a + 1] = { later = id, text = "|cff808080Later:|r " .. Names({ id }) .. " |cff808080(/qahead later clear brings it back)|r" }
 		end
 		local n = 0
-		for _, st in ipairs(s) do n = n + #st.actions end
-		if not most or n > most or (n == most and t < travel) then stops, travel, away, most = s, t, a, n end
-	end
+		-- quests picked up and handed in (not work visits: doing two quests' kills in one visit is the point)
+		for _, st in ipairs(s) do for _, ac in ipairs(st.actions) do if ac.kind ~= "work" then n = n + 1 end end end
+		if not most or n > most or (n == most and t < travel - 1e-9) then stops, travel, away, most = s, t, a, n end
+	end end
 	if #stops == 0 and #away == 0 then
 		if not quiet then
 			local full = 0
