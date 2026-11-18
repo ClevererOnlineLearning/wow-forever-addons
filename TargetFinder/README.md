@@ -28,7 +28,9 @@ You can also pick one from **Nearby** (mobs in your zone), **Quests** (mobs your
 
 *(Optional)* Put a **second target** in the box underneath. Your one Find key then switches between the two:
 each press tries the other mob first, and if only one of them is around, it finds that one.
-A name picked from **Nearby**, **Quests** or **Saved** goes into the name box you clicked last: click the second box first to fill it. **Shift+click** a name (or press **Shift+Enter** in the quick search box) to always put it in the second box.
+A name picked from **Nearby**, **Quests** or **Saved** goes into the name box you clicked last: click the second box first to fill it. **Shift+click** a name to always put it in the second box.
+
+The quick search box (minimap right-click, or the Search key) has a **1st** and a **2nd** box with your current targets. **Tab** moves between them, **Up/Down** highlights a match and **Enter** puts it in the box, **Enter** again saves both, **Esc** cancels. Empty the 2nd box to stop looking for a second target.
 
 **2. Pick your key.**
 Click **Set Find key**, then press the key you want (for example `F`). If that key already does something,
