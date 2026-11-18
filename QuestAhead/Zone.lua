@@ -21,6 +21,10 @@ QA.ZONE_ROWS = 12        -- lines in the guide window
 QA.MAP_STEPS = 8         -- steps ahead shown on the map (the TomTom arrow and the guide have the rest)
 QA.MARK_MERGE = 20       -- markers closer than this (pixels) become one, numbered "4,7"
 QA.MARK_SHIFT = 14       -- step numbers sit this far up and right of the spot, off Questie's icon
+QA.NEAR_ROWS = 4         -- "Nearby" lines at the top of the guide window
+QA.NEAR_YARDS = 400      -- mobs closer than this are shown bright, further ones grey
+
+local needs              -- what your log quests still need, mob by mob (rebuilt when the log changes)
 
 -- Player state (one place each, so tests can stand in for the game) ------------------------------
 
@@ -576,6 +580,7 @@ local function SavePlanMap(map)
 end
 
 function QA.PlanZone(map, quiet)
+	needs = nil
 	map = map or (C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player"))
 	if not map then print(TAG .. "can't tell which zone to plan.") return nil end
 	local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(map)
@@ -772,6 +777,102 @@ function QA.ZoneClear(keepSaved)
 	end
 end
 
+-- Nearby: whatever your quests still need that's closest to you right now -----------------------------
+
+-- { {name, what = {"Frostsaber Pelt", ...}, pts = {{x, y}, ...}}, ... } for the plan's map
+local function Needs(map)
+	if needs and needs.map == map then return needs.list end
+	local byKey, list = {}, {}
+	for q, e in pairs(QA.QuestLog()) do
+		if not e.complete and not Done(q) then
+			local objs = {}
+			if C_QuestLog and C_QuestLog.GetQuestObjectives then
+				local ok, o = pcall(C_QuestLog.GetQuestObjectives, q)
+				if ok and type(o) == "table" then objs = o end
+			end
+			-- each thing the quest's work needs, matched to its line in the log so finished ones drop out;
+			-- if none of them match the log's wording (kill credit, say), all of them count while any line is unfinished
+			local wanted, matched, open = {}, false, false
+			for _, o in ipairs(objs) do if not o.finished then open = true end end
+			for _, src in ipairs(QA.ObjectiveSources(q)) do
+				local mob = (src.kind == "npc" and NPC or OBJ)(src.id, "name") or "?"
+				local oname = QA.ObjectiveName(mob .. ": " .. src.what)
+				local line
+				for _, o in ipairs(objs) do
+					if oname and type(o.text) == "string" and o.text:find(oname, 1, true) then line = o; break end
+				end
+				if line then matched = true end
+				wanted[#wanted + 1] = { src = src, mob = mob, what = (oname == mob or not oname) and "kill" or oname, line = line }
+			end
+			for _, w in ipairs(wanted) do
+				local need
+				if w.line then need = not w.line.finished
+				else need = not matched and (open or #objs == 0) end
+				if need then
+					local key = w.src.kind .. w.src.id
+					local n = byKey[key]
+					if not n then
+						local pts = SpotsOn(w.src.kind, w.src.id, map)
+						if pts[1] then
+							n = { name = w.mob, what = {}, has = {}, pts = pts }
+							byKey[key] = n
+							list[#list + 1] = n
+						end
+					end
+					if n and not n.has[w.what] then n.has[w.what] = true; n.what[#n.what + 1] = w.what end
+				end
+			end
+		end
+	end
+	needs = { map = map, list = list }
+	return list
+end
+
+local COMPASS = { "E", "NE", "N", "NW", "W", "SW", "S", "SE" }
+local function Compass(dx, dy)
+	local deg = math.deg(math.atan2(-dy, dx)) -- map y runs south
+	return COMPASS[math.floor((deg + 22.5) / 45) % 8 + 1]
+end
+
+-- { {name, what, yards, dir}, ... } closest first
+function QA.ZoneNearby()
+	local p = QA.zone
+	local me = p and QA.PlayerSpot(p.map)
+	if not me then return {} end
+	local w, h = ZoneSize(p.map)
+	local out = {}
+	for _, n in ipairs(Needs(p.map)) do
+		local bd, bx, by
+		for _, pt in ipairs(n.pts) do
+			local dx, dy = (pt.x - me.x) * w, (pt.y - me.y) * h
+			local d = dx * dx + dy * dy
+			if not bd or d < bd then bd, bx, by = d, dx, dy end
+		end
+		local yards = math.floor(math.sqrt(bd) + 0.5)
+		out[#out + 1] = { name = n.name, what = n.what, yards = yards, dir = yards < 15 and "here" or Compass(bx, by) }
+	end
+	table.sort(out, function(a, b) if a.yards ~= b.yards then return a.yards < b.yards end return a.name < b.name end)
+	return out
+end
+
+function QA.ZoneNearbyUpdate()
+	local g = QA.guide
+	if not (g and g.near and QA.zone) then return end
+	local list = QA.ZoneNearby()
+	for i = 1, QA.NEAR_ROWS do
+		local n, text = list[i], ""
+		local head = i == 1 and "|cff66ccffNearby:|r " or "|cff66ccff        |r "
+		if n then
+			local col = n.yards <= QA.NEAR_YARDS and "|cffffffff" or "|cff909090"
+			text = head .. col .. n.name .. "|r|cffc0c0c0: " .. table.concat(n.what, ", ") .. "|r " .. col
+				.. (n.dir == "here" and "(here)" or ("(" .. n.yards .. " yd " .. n.dir .. ")")) .. "|r"
+		elseif i == 1 then
+			text = head .. "|cff909090nothing left to kill or loot for your quests on this map|r"
+		end
+		g.near[i]:SetText(text)
+	end
+end
+
 -- Guide window ---------------------------------------------------------------------------------------
 
 local CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:0|t "
@@ -801,7 +902,8 @@ end
 
 local function BuildGuide()
 	local g = CreateFrame("Frame", "QuestAheadGuide", UIParent)
-	g:SetSize(380, 40 + QA.ZONE_ROWS * 15)
+	local nearH = QA.NEAR_ROWS * 15 + 6
+	g:SetSize(380, 40 + QA.ZONE_ROWS * 15 + nearH)
 	g:SetPoint("RIGHT", UIParent, "RIGHT", -60, 60)
 	local pos = type(QuestAheadDB) == "table" and QuestAheadDB.guidePos
 	if type(pos) == "table" and pos[1] then
@@ -826,10 +928,26 @@ local function BuildGuide()
 	g.title:SetPoint("TOPLEFT", 8, -7)
 	g.title:SetPoint("RIGHT", -100, 0)
 	g.title:SetJustifyH("LEFT")
+	-- what's nearby (kept up to date every second while the window is open), then the steps
+	g.near = {}
+	for i = 1, QA.NEAR_ROWS do
+		local fs = g:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		fs:SetPoint("TOPLEFT", 8, -10 - i * 15)
+		fs:SetPoint("RIGHT", -8, 0)
+		fs:SetJustifyH("LEFT")
+		if fs.SetWordWrap then fs:SetWordWrap(false) end
+		g.near[i] = fs
+	end
+	g:SetScript("OnUpdate", function(f, elapsed)
+		f.nearWait = (f.nearWait or 0) - (elapsed or 0)
+		if f.nearWait > 0 then return end
+		f.nearWait = 1
+		Safe(QA.ZoneNearbyUpdate)
+	end)
 	g.rows = {}
 	for i = 1, QA.ZONE_ROWS do
 		local fs = g:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		fs:SetPoint("TOPLEFT", 8, -10 - i * 15)
+		fs:SetPoint("TOPLEFT", 8, -10 - i * 15 - nearH)
 		fs:SetPoint("RIGHT", -8, 0)
 		fs:SetJustifyH("LEFT")
 		if fs.SetWordWrap then fs:SetWordWrap(false) end
@@ -906,6 +1024,7 @@ function QA.ZoneGuideUpdate()
 		local r = rows[first + i - 1]
 		g.rows[i]:SetText(r and r.text or "")
 	end
+	QA.ZoneNearbyUpdate()
 	g:Show()
 end
 
@@ -1067,6 +1186,7 @@ zev:SetScript("OnEvent", function(_, event, a1, a2)
 		end
 		return
 	end
+	needs = nil -- the log changed: what's still needed is worked out again
 	if not QA.zone then return end
 	if event == "QUEST_TURNED_IN" and type(a1) == "number" then QA.turnedIn[a1] = true end
 	if event == "QUEST_LOG_UPDATE" then
