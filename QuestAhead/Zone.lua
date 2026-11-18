@@ -25,7 +25,7 @@ QA.NEAR_ROWS = 4         -- "Nearby" lines at the top of the guide window
 QA.NEAR_YARDS = 400      -- mobs closer than this are shown bright, further ones grey
 QA.NEAR_EVERY = 10       -- seconds between "Nearby" updates (and within a second of a quest log change)
 QA.HUNT_EVERY = 3        -- seconds between arrow checks on a kill/loot step
-QA.HUNT_REACHED = 40     -- yards: this close to a spawn spot counts as having checked it
+QA.HUNT_REACHED = 100    -- yards: a spawn spot this close is in sight, so it counts as checked
 
 local needs              -- what your log quests still need, mob by mob (rebuilt when the log changes)
 
