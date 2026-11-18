@@ -15,6 +15,7 @@ local Title, Safe, TAG = QA.Title, QA.Safe, QA.TAG
 QA.ZONE_MAX_QUESTS = 40  -- most quests in one plan
 QA.PICKUP_PULL = 0.6     -- pick-ups count as this much nearer, so a hub's givers are all seen before leaving
 QA.PULLS = { 0.35, 0.6, 1 } -- tried in turn; the shortest route wins
+QA.HANDIN_PULL = 0.5     -- a finished quest's hand-in counts as this much nearer: hand in (XP, log space, follow-ons) before more killing
 QA.SAME_SPOT = 0.004     -- closer than this (share of the map) is the same place
 QA.RUN_SPEED = 7         -- yards a second on foot, for the time estimate
 QA.ZONE_ROWS = 12        -- lines in the guide window
@@ -508,7 +509,7 @@ function QA.BuildZoneRoute(map, quests, start, pull)
 		for _, r in ipairs(quests) do
 			if r.picked and not r.finished then
 				if #r.pending == 0 then
-					offer(Dist(pos, r.handin, w, h), { kind = "handin", r = r })
+					offer(Dist(pos, r.handin, w, h) * QA.HANDIN_PULL, { kind = "handin", r = r })
 				else
 					for _, o in ipairs(r.pending) do
 						for _, c in ipairs(o.cands) do offer(Dist(pos, c, w, h), { kind = "work", at = c }) end
@@ -648,7 +649,9 @@ function QA.PlanZone(map, quiet)
 		end
 		return nil
 	end
-	QA.zone = { map = map, quests = list, stops = stops, travel = travel, skipped = found.skipped, away = away }
+	local ready, log = {}, QA.QuestLog()
+	for _, id in ipairs(list) do if log[id] and log[id].complete then ready[id] = true end end
+	QA.zone = { map = map, quests = list, stops = stops, travel = travel, skipped = found.skipped, away = away, ready = ready }
 	SavePlanMap(map)
 	if QA.debug then
 		QA.Dbg("zone plan " .. MapName(map) .. ": " .. #list .. " quests, " .. #stops .. " stops")
@@ -750,6 +753,16 @@ function QA.ZoneRefresh()
 	local p = QA.zone
 	if not p then return end
 	local log = QA.QuestLog()
+	local finished = false
+	for _, id in ipairs(p.quests or {}) do
+		if log[id] and log[id].complete and not (p.ready and p.ready[id]) then finished = true end
+	end
+	if finished and not QA.replanning then
+		QA.replanning = true
+		QA.PlanZone(p.map, true)
+		QA.replanning = nil
+		return
+	end
 	for _, t in ipairs(p.away or {}) do
 		if t.unknown and (Done(t.unknown) or (log[t.unknown] and log[t.unknown].complete)) and not QA.replanning then
 			QA.replanning = true
