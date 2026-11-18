@@ -61,14 +61,83 @@ local y = S.Row(c1, 30)
 S.Note(c1, "\"In combat only\" lets you run around in Cheetah freely and only complains once a fight starts.", L, y, CW - 2 * L)
 S.Fit(c1, 4)
 
+-- Sounds: a drop-down list for each reminder (one list, shared, opening under the button clicked)
+local cS = S.Card(panel, "Sounds", 12, S.Below(c1), CW)
+y = S.Row(cS, 26)
+Check(cS, "Play a sound when a reminder appears", y, function() return db().sound end, function(v) db().sound = v end,
+	"Plays once when the icon appears (not again for a few seconds), in or out of combat.")
+local function SoundName(id)
+	for _, s in ipairs(HR.SOUNDS) do if s.id == id then return s.name end end
+	return HR.SOUNDS[1].name
+end
+local IH = 20
+local menu = CreateFrame("Frame", "HunterReminderSoundMenu", panel)
+menu:SetFrameStrata("FULLSCREEN_DIALOG")
+menu:SetSize(240, #HR.SOUNDS * IH + 8)
+menu:EnableMouse(true)
+S.Panel(menu, 1)
+S.Border(menu, S.ACCENT[1], S.ACCENT[2], S.ACCENT[3], 0.6)
+menu:Hide()
+menu.items = {}
+for i, s in ipairs(HR.SOUNDS) do
+	local r = CreateFrame("Button", nil, menu)
+	r:SetSize(232, IH)
+	r:SetPoint("TOPLEFT", 4, -4 - (i - 1) * IH)
+	local hl = r:CreateTexture(nil, "HIGHLIGHT")
+	hl:SetAllPoints()
+	hl:SetColorTexture(1, 0.82, 0, 0.15)
+	local fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	fs:SetPoint("LEFT", 20, 0)
+	r:SetFontString(fs)
+	r:SetText(s.name)
+	local tick = r:CreateTexture(nil, "OVERLAY")
+	tick:SetSize(14, 14)
+	tick:SetPoint("LEFT", 3, 0)
+	tick:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+	r.tick, r.soundID = tick, s.id
+	r:SetScript("OnClick", function()
+		if not menu.key then return end
+		db()[menu.key .. "Sound"] = s.id
+		menu:Hide()
+		if menu.show then menu.show() end
+		HR.PlaySoundID(s.id)
+	end)
+	menu.items[i] = r
+end
+local function OpenMenu(b, key, show)
+	if menu:IsShown() and menu.owner == b then menu:Hide(); return end
+	menu.owner, menu.key, menu.show = b, key, show
+	for _, it in ipairs(menu.items) do it.tick:SetShown(db()[key .. "Sound"] == it.soundID) end
+	menu:ClearAllPoints()
+	menu:SetPoint("TOPLEFT", b, "BOTTOMLEFT", 0, -2)
+	menu:Show()
+end
+panel:HookScript("OnHide", function() menu:Hide() end)
+HR.soundPickers = {}
+for _, t in ipairs(HR.TRACKED) do
+	y = S.Row(cS, 28)
+	local label = S.Text(cS, "", L, y - 6)
+	local play = S.Button(cS, "Play", 52, 22)
+	play:SetPoint("TOPLEFT", CW - L - 52, y - 1)
+	play:SetScript("OnClick", function() HR.PlaySoundID(db()[t.key .. "Sound"]) end)
+	local b = S.Button(cS, "", 220, 22)
+	b:SetPoint("RIGHT", play, "LEFT", -6, 0)
+	local function show() b:SetText(SoundName(db()[t.key .. "Sound"]) .. "  |cffffd100v|r") end
+	b:SetScript("OnClick", function(self) OpenMenu(self, t.key, show) end)
+	S.Tip(b, "Change sound", "Click to pick from the list. It plays as you pick it.")
+	HR.soundPickers[t.key] = b
+	R(function() label:SetText(t.key == "hawk" and "Aspect" or "Trueshot"); show() end)
+end
+y = S.Row(cS, 30)
+S.Note(cS, "Your own sounds: put custom1.ogg to custom3.ogg in Interface\\AddOns\\HunterReminder\\sounds, then pick Custom 1-3.", L, y, CW - 2 * L)
+S.Fit(cS, 4)
+
 -- Options
-local c2 = S.Card(panel, "Options", 12, S.Below(c1), CW)
+local c2 = S.Card(panel, "Options", 12, S.Below(cS), CW)
 y = S.Row(c2, 26)
 Check(c2, "Also remind in cities and inns (out of combat)", y, function() return db().showResting end, function(v) db().showResting = v end)
 y = S.Row(c2, 26)
 Check(c2, "Hide while mounted", y, function() return db().hideMounted end, function(v) db().hideMounted = v end)
-y = S.Row(c2, 26)
-Check(c2, "Warning sound when a buff drops in combat", y, function() return db().sound end, function(v) db().sound = v end)
 y = S.Row(c2, 30)
 R(S.Stepper(c2, "Icon size", L, y, CW - 2 * L, function() return string.format("%.1fx", tonumber(db().scale) or 1) end, function(d)
 	db().scale = math.floor(math.min(2.5, math.max(0.5, (tonumber(db().scale) or 1) + d * 0.1)) * 10 + 0.5) / 10
